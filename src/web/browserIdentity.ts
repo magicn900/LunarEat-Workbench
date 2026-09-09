@@ -1,4 +1,5 @@
-let clientId = sessionStorage.getItem('workbench-client') || crypto.randomUUID();
+import { randomUUID } from './uuid';
+let clientId = sessionStorage.getItem('workbench-client') || randomUUID();
 let ready = false;
 export const browserIdentity = new Promise<string>(resolve => {
     const accept = (id: string) => {
@@ -7,13 +8,13 @@ export const browserIdentity = new Promise<string>(resolve => {
         ready = true;
         resolve(id);
     };
-    if (!navigator.locks) { accept(crypto.randomUUID()); return; }
+    if (!navigator.locks) { accept(randomUUID()); return; }
     const claim = (id: string) => {
         void navigator.locks.request('workbench-tab:' + id, { ifAvailable: true }, async lock => {
-            if (!lock) { claim(crypto.randomUUID()); return; }
+            if (!lock) { claim(randomUUID()); return; }
             accept(id);
             await new Promise<void>(() => {});
-        }).catch(() => accept(crypto.randomUUID()));
+        }).catch(() => accept(randomUUID()));
     };
     claim(clientId);
 });

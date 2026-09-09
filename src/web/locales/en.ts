@@ -1,4 +1,10 @@
 export const english: Record<string, string> = {
+    '手动复制': 'Copy manually',
+    '待复制内容': 'Text to copy',
+    '重新全选': 'Select all again',
+    '我已复制': 'I have copied it',
+    '浏览器未允许自动复制。下方是完整内容，请按 Ctrl+C（Mac 使用 Cmd+C），或使用系统的复制菜单。': 'Automatic copying was not allowed. Select the full text below and press Ctrl+C (Cmd+C on Mac), or use your system copy menu.',
+    '如果包含密钥，请仅粘贴到可信位置。关闭此窗口不会自动标记为已复制。': 'If this contains a secret, paste it only into a trusted destination. Closing this window does not mark it as copied.',
     '此页面已失联，可能仍有未保存输入。建议先回到原页面保存。确认放弃它对工作区的保护？这不会保存或删除原页面的本地恢复副本。': 'This page is disconnected and may contain unsaved input. Try saving from the original page first. Release its workspace protection? This does not save or delete its local recovery copy.',
     '有失联页面的未保存输入': 'A disconnected page has unsaved input',
     '最后在线：': 'Last seen: ',
@@ -780,4 +786,7 @@ export const english: Record<string, string> = {
     "正文编辑区": "Document editor",
     "设置加载失败，草稿仍保留。请刷新页面后重试。": "Settings could not load. Your draft is retained. Refresh the page to try again.",
     "管理页面加载失败，请刷新后重试。": "Administration could not load. Refresh the page to try again.",
+    "当前使用 HTTP，凭据和内容将明文传输。仅在明确批准该地址的临时使用后添加 --allow-insecure-http；建议使用短期、最小权限凭据。": "This HTTP connection sends credentials and content unencrypted. Add --allow-insecure-http only after explicitly approving temporary use of this origin; use a short-lived, least-privilege credential.",
+    "当前地址为 HTTP。请先说明凭据和内容明文传输的风险，仅在我明确批准此地址后，配置时添加 --allow-insecure-http；如果本对话已有对应批准，无需重复询问。不要自行放宽其他地址的限制。缺少凭据时先完成地址配置，报告等待凭据，不要声称已连接。": "This origin uses HTTP. Explain the risks of sending credentials and content unencrypted; add --allow-insecure-http during configuration only after my explicit approval for this origin. Reuse matching approval already given in this conversation. Do not relax restrictions for other origins. If the credential is missing, configure the address and report that you are waiting for it; do not claim a successful connection.",
+    "远程连接默认使用 HTTPS。凭据仅代表当前账号被授予的项目权限；共享灵感池需要单独授权。": "Remote connections require HTTPS by default. Credentials only grant this account's authorized project permissions; shared inspiration requires separate authorization.",
 };

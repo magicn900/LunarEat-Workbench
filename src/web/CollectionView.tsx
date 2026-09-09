@@ -1,3 +1,4 @@
+import { randomUUID } from './uuid';
 import { t } from './i18n';
 import { useState, useEffect, useRef, useId } from 'react';
 import { locked, flushEditing, afterEditing, registerBuffer, editingChanged } from './editing';
@@ -68,7 +69,7 @@ function ResolvedGrid({ view, collection, tree, compact }: { view: View; collect
     const persist = (patch: Partial<View>) => updateView(view.id, patch);
     const change = (patch: Partial<View>) => afterEditing(() => persist(patch));
     const go = (page: number) => { void flushEditing().then(() => setPaging({ key: configKey, page })).catch(error => notify(error.message, true)); };
-    const add = async () => { await flushEditing(); const title = prompt(t("新记录名称")); if (!title?.trim()) return; const id = crypto.randomUUID(); await put({ id, kind: 'object', path: '记录/' + id + '.md', title, collection: collection.id, fields: {}, body: '' }, null); notify(t("已新增记录；如被当前筛选隐藏，可清除筛选后查看")); };
+    const add = async () => { await flushEditing(); const title = prompt(t("新记录名称")); if (!title?.trim()) return; const id = randomUUID(); await put({ id, kind: 'object', path: '记录/' + id + '.md', title, collection: collection.id, fields: {}, body: '' }, null); notify(t("已新增记录；如被当前筛选隐藏，可清除筛选后查看")); };
     return <section className={'collection-grid ' + (compact ? 'embedded' : '')} data-view={view.id} data-entity-id={view.id} data-history-scope={collection.id} tabIndex={0}>
         <header><span className="eyebrow">{t("集合视图")}</span><strong>{view.title}</strong><span className="count">{result.filteredCount}</span><div className="spacer"/>{[['table', Table2], ['list', List], ['cards', LayoutGrid]].map(([layout, Icon]: any) => <button disabled={locked()} key={layout} className={'icon ' + (view.layout === layout ? 'active' : '')} aria-pressed={view.layout === layout} title={layout === 'table' ? t("表格") : layout === 'list' ? t("列表") : t("卡片")} onClick={() => void change({ layout }).catch(() => {})}><Icon size={15}/></button>)}<button disabled={locked()} className="small" onClick={() => void add().catch(error => notify(error.message, true))}><Plus size={14}/>{t("记录")}</button><EntityMenuButton id={view.id} title={view.title}/></header>
         <div className="view-tools"><ViewSearch value={view.search || ''} save={persist}/>{!compact && <button disabled={locked()} className="small" onClick={() => { const columns = prompt(t("可见字段（英文标识，以逗号分隔）"), view.columns.join(',')); if (columns) void change({ columns: columns.split(',').map(key => key.trim()).filter(Boolean) }).catch(() => {}); }}>{t("显示字段")}</button>}{view.layout !== 'table' && <div className="list-filters">{allFields.map(field => <ColumnFilter key={field.key} field={field} view={view} tree={tree} change={persist}/>)}</div>}</div>

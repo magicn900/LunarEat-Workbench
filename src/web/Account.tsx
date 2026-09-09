@@ -7,6 +7,7 @@ import { api } from './state';
 import { flushEditing } from './editing';
 import { applyAppearance } from './appearance';
 import { Modal } from './Modal';
+import { ClipboardDialog } from './ClipboardDialog';
 import { PanelBoundary } from './PanelBoundary';
 const SettingsDialog = lazy(() => import('./SettingsDialog').then(module => ({ default: module.SettingsDialog })));
 import { t, useLanguage } from './i18n';
@@ -28,6 +29,7 @@ export function AccountProvider({ identity, projectId, switchProject, refreshIde
     const close = () => { setSettings(false); requestAnimationFrame(() => trigger.current?.isConnected && trigger.current.focus()); };
     return <AccountContext.Provider value={{ identity, projectId, preferences, savePreferences, openSettings: element => { trigger.current = element; setSettings(true); }, switchProject, signOut, refreshIdentity }}>
         {children}{settings && <PanelBoundary fallback={<Modal title={t('设置')} onClose={close}><p role="alert">{t('设置加载失败，草稿仍保留。请刷新页面后重试。')}</p></Modal>}><Suspense fallback={<Modal title={t('设置')} busy onClose={() => {}}><p role="status">{t('正在加载…')}</p></Modal>}><SettingsDialog onClose={close}/></Suspense></PanelBoundary>}
+        <ClipboardDialog key={identity.id + ':' + projectId}/>
     </AccountContext.Provider>;
 }
 

@@ -9,7 +9,7 @@ Use Node.js 24+ and the bundled remote API client; no MCP or repository checkout
 
 ## Start and discover
 
-On first connection or changed identity, run **agent connect** and verify account, project, permissions and archive state before reading content. Installation/configuration: [connection.md](references/connection.md). Do not reconnect for every field.
+On first connection or changed identity, run **agent connect** and verify account, project, permissions and archive state before reading content. Installation/configuration: [connection.md](references/connection.md). Do not reconnect for every field. Remote HTTP is rejected by default; the connection guide describes an origin-bound exception only with explicit user approval. Missing credentials do not mean installation failed.
 
 **agent help COMMAND** or **agent COMMAND --help** returns only that command's authoritative input contract. Narrow help further with **agent help edit.field**, **edit.embed**, **view**, **versions.publish**, etc. Downloaded help is local; do not read the entire contracts.json or source scripts. JSON input accepts **--json JSON**, **--input -** (stdin), or a UTF-8 JSON file. Global **--profile NAME** works before or after the command.
 

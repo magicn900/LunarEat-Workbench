@@ -1,3 +1,4 @@
+import { randomUUID } from './uuid';
 import { t } from './i18n';
 import { ChevronRight, Folder, FileText } from 'lucide-react';
 import { EntityMenuButton } from './CommandSurface';
@@ -9,7 +10,7 @@ type Branch = {
     files: Entity[];
 };
 export function createFolder() { if(locked()){notify(t("请先收回控制权"),true);return;} const path = prompt(t("新目录路径，例如：设计/战斗")); if (!path?.trim())
-    return; const id = crypto.randomUUID(); void put({ id, kind: 'folder', title: path.split('/').at(-1)!, path: path + '/__directory.json' }, null).catch(error => notify(error.message, true)); }
+    return; const id = randomUUID(); void put({ id, kind: 'folder', title: path.split('/').at(-1)!, path: path + '/__directory.json' }, null).catch(error => notify(error.message, true)); }
 export function DirectoryTree({ entities, selected }: {
     entities: Entity[];
     selected: string;

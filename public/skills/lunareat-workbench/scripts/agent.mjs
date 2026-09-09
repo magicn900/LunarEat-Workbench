@@ -12,6 +12,8 @@ const flags = {};
 let secret;
 const fail = (code, message) => { throw Object.assign(new Error(message), { code }); };
 const hash = value => createHash('sha256').update(value).digest('hex');
+const remoteHttp = url => url.protocol === 'http:' && !['127.0.0.1','localhost','[::1]'].includes(url.hostname);
+const trustedTransport = (url, allowedOrigin) => url.protocol === 'https:' || (url.protocol === 'http:' && (!remoteHttp(url) || allowedOrigin === url.origin));
 const read = file => JSON.parse(readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
 const save = (file, data) => {
   const temporary = file + '.' + randomUUID() + '.tmp';
@@ -22,6 +24,10 @@ async function main() {
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
     if (arg === '--help' || arg === '-h') { wantsHelp = true; continue; }
+    if (arg === '--allow-insecure-http') {
+      if (Object.hasOwn(flags, arg)) fail('ARGUMENT', 'Duplicate option: ' + arg);
+      flags[arg] = true; continue;
+    }
     if (arg.startsWith('--')) {
       if (!['--profile','--url','--token-env','--input','--json','--task','--query'].includes(arg) || args[index + 1] === undefined || Object.hasOwn(flags,arg)) fail('ARGUMENT', 'Invalid or duplicate option: ' + arg);
       flags[arg] = args[++index];
@@ -31,6 +37,7 @@ async function main() {
   }
   if (wantsHelp) { helpName = command; command = 'help'; }
   if (!command || command === 'help') {
+    if (helpName === 'configure') return { usage: 'configure --profile NAME --url ORIGIN --token-env ENV_NAME [--allow-insecure-http]', security: 'HTTPS by default. Remote HTTP requires explicit user approval for this exact origin before using --allow-insecure-http. Credentials and content are unencrypted. Existing profiles are never overwritten; use a new profile to change origin or switch to HTTPS.' };
     if (helpName) {
       const contractFile = new URL('./contracts.json', import.meta.url);
       if (existsSync(contractFile)) {
@@ -39,8 +46,9 @@ async function main() {
         return entry;
       }
       command = 'schema'; flags['--json'] = JSON.stringify({name: helpName});
-    } else return { commands: ['configure','new-task','help',...Object.keys(routes)], usage: 'node agent.mjs COMMAND [--json JSON | --input FILE | --input -] [--task ID]; help COMMAND or help edit.field; global --profile may precede command', configuration: 'configure --url HTTPS_URL --token-env ENV_NAME; secrets only come from that environment variable; WORKBENCH_CONFIG_HOME isolates all local configuration' };
+    } else return { commands: ['configure','new-task','help',...Object.keys(routes)], usage: 'node agent.mjs COMMAND [--json JSON | --input FILE | --input -] [--task ID]; help COMMAND or help edit.field; global --profile may precede command', configuration: 'configure --url ORIGIN --token-env ENV_NAME [--allow-insecure-http]; remote HTTP requires explicit user approval and sends credentials unencrypted; approval applies only to the configured origin; secrets only come from that environment variable; WORKBENCH_CONFIG_HOME isolates all local configuration' };
   }
+  if (flags['--allow-insecure-http'] && command !== 'configure') fail('ARGUMENT', '--allow-insecure-http is for configure only');
   if (flags['--input'] && flags['--json']) fail('ARGUMENT', 'Choose --input or --json');
   if (command !== 'configure' && (flags['--url'] || flags['--token-env'])) fail('ARGUMENT', 'Connection options are for configure only');
   if (flags['--query'] && command !== 'find') fail('ARGUMENT', '--query is not supported by this command');
@@ -53,17 +61,19 @@ async function main() {
     if (existsSync(configFile)) fail('CONFIG_EXISTS', 'Profile exists; inspect it or choose another profile, do not overwrite blindly');
     const url = new URL(flags['--url']);
     if (url.username || url.password || url.search || url.hash || url.pathname !== '/') fail('ARGUMENT', 'Use the workbench origin without credentials, query or path');
-    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(url.hostname))) fail('HTTPS_REQUIRED', 'Remote workbenches require HTTPS');
+    if (flags['--allow-insecure-http'] && !remoteHttp(url)) fail('ARGUMENT', '--allow-insecure-http is only for an explicitly approved remote HTTP origin');
+    const insecureHttpOrigin = flags['--allow-insecure-http'] ? url.origin : undefined;
+    if (!trustedTransport(url, insecureHttpOrigin)) fail('HTTPS_REQUIRED', 'Remote workbenches require HTTPS by default. Only after explicit user approval for this origin, configure with --allow-insecure-http; credentials and content will be sent unencrypted.');
     const tokenEnv = flags['--token-env'] || 'WORKBENCH_TOKEN';
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tokenEnv)) fail('ARGUMENT', 'Invalid environment variable name');
-    writeFileSync(configFile, JSON.stringify({ url: url.origin, tokenEnv }, null, 2), { mode: 0o600, flag: 'wx' });
-    return { configured: true, profile, url: url.origin, tokenEnv, next: 'Provide the credential securely in this environment variable, then run connect. No content has been accessed.' };
+    writeFileSync(configFile, JSON.stringify({ url: url.origin, tokenEnv, ...(insecureHttpOrigin ? { insecureHttpOrigin } : {}) }, null, 2), { mode: 0o600, flag: 'wx' });
+    return { configured: true, profile, url: url.origin, tokenEnv, ...(insecureHttpOrigin ? { warning: 'HTTP sends credentials and content unencrypted. Approval applies only to this origin. Use a short-lived, least-privilege credential; switch to HTTPS and revoke it afterward.' } : {}), next: 'Address configured. Provide the credential securely in this environment variable, then run connect. No content has been accessed.' };
   }
   const config = read(configFile);
   const origin = new URL(config.url);
-  if (origin.origin !== config.url || origin.username || origin.password || (origin.protocol !== 'https:' && !(origin.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(origin.hostname)))) fail('CONFIG_INVALID', 'Untrusted connection URL');
+  if (origin.origin !== config.url || origin.username || origin.password || !trustedTransport(origin, config.insecureHttpOrigin)) fail('CONFIG_INVALID', 'Untrusted connection URL; remote HTTP requires explicit approval saved for this exact origin');
   secret = process.env[config.tokenEnv];
-  if (!secret) fail('CREDENTIAL_REQUIRED', 'Set the configured credential environment variable securely; never paste credentials into chat');
+  if (!secret) fail('CREDENTIAL_REQUIRED', 'Address configured; waiting for credential. Set the configured credential environment variable securely in the client process; never paste credentials into chat. No request was sent.');
   const binding = hash(config.url + '\n' + secret);
   const taskDirectory = join(directory, profile + '-tasks');
   if (command === 'new-task') {

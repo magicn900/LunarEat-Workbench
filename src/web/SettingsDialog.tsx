@@ -3,6 +3,7 @@ import { KeyRound, Monitor, ShieldCheck, Copy, Plus, ChevronDown, Check } from '
 import { Modal } from './Modal';
 import { useAccount } from './accountContext';
 import { api } from './state';
+import { copyText } from './clipboard';
 import { flushEditing } from './editing';
 import { permissionDependencies, permissionLabels } from '../shared/permissions';
 import { t, useLanguage } from './i18n';
@@ -35,7 +36,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     }, [dirty, unsavedSecret]);
     const close = () => { if (busy) return; if (dirty || unsavedSecret) setConfirmation('close'); else onClose(); };
     const perform = async (operation: () => Promise<void>) => { if (busy) return; setBusy(true); setError(''); setNotice(''); try { await operation(); } catch (error: any) { setError(t(error.message)); } finally { setBusy(false); } };
-    const copy = async (value: string, secret = false) => { try { await navigator.clipboard.writeText(value); if (secret) setCopied(true); setNotice(t('已复制')); } catch { setError(t('无法访问剪贴板，请手动复制')); } };
+    const copy = async (value: string, secret = false) => { setError(''); setNotice(''); if (await copyText(value)) { if (secret) setCopied(true); setNotice(t('已复制')); } };
     const changePassword = () => void perform(async () => {
         await flushEditing();
         await api('/account/password', { currentPassword: passwords.current, newPassword: passwords.next });

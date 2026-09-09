@@ -1,3 +1,4 @@
+import { randomUUID } from './uuid';
 import { t } from './i18n';
 import { useEffect, useState } from 'react';
 import { BookOpen, CheckCircle2, Clock3, ChevronLeft, Search } from 'lucide-react';
@@ -33,6 +34,6 @@ function SyncDialog({ changes, revoke = false, onClose, onDone }: { changes: any
     const [busy, setBusy] = useState(false), [error, setError] = useState('');
     return <Modal title={revoke ? t("重新标记为待同步至实现") : t("确认已同步至实现")} className="sync-dialog" onClose={onClose} busy={busy}><p>{revoke ? t("保留已有确认记录，将以下发布重新列入待同步。") : t("确认这些正式设计与所填写的实现版本一致。现有实现已经满足、无需修改代码时，也可以确认。")}</p><ul>{changes.map(change => <li key={change.id}>{change.title}</li>)}</ul><form onSubmit={async event => {
         event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget)); const record = changes[0].confirmations.find((item: any) => item.active);
-        setBusy(true); setError(''); try { await api('/changes/confirm', { requestId: crypto.randomUUID(), ids: changes.map(change => change.id), repository: revoke ? record.repository : values.repository, commit: revoke ? record.commit_id : values.commit, note: revoke ? '重新标记为待同步至实现：' + values.note : values.note, active: !revoke }); await onDone(); notify(revoke ? '已重新标记为待同步至实现' : '已确认同步至实现'); } catch (error: any) { setError(error.message); } finally { setBusy(false); }
+        setBusy(true); setError(''); try { await api('/changes/confirm', { requestId: randomUUID(), ids: changes.map(change => change.id), repository: revoke ? record.repository : values.repository, commit: revoke ? record.commit_id : values.commit, note: revoke ? '重新标记为待同步至实现：' + values.note : values.note, active: !revoke }); await onDone(); notify(revoke ? '已重新标记为待同步至实现' : '已确认同步至实现'); } catch (error: any) { setError(error.message); } finally { setBusy(false); }
     }}>{!revoke && <><label>{t("代码仓库标识")}<input name="repository" required disabled={busy} placeholder={t("实现所在仓库")}/></label><label>{t("实现版本（代码 commit）")}<input name="commit" required disabled={busy} placeholder={t("填写已检查的代码版本，不要求新建提交")}/></label></>}<label>{revoke ? t("重新标记的原因") : t("确认说明")}<textarea name="note" required disabled={busy} placeholder={revoke ? t("为什么需要重新核对实现？") : t("说明已修改并检查，或现有实现为什么已经满足。")}/></label>{error && <p className="error-list" role="alert">{t(error)}</p>}<small>{t("此状态由有权限的成员或 Agent 确认，平台不会自动检验代码。")}</small><footer><button className="primary" disabled={busy}>{busy ? t("保存中…") : revoke ? t("确认重新标记") : t("将 ") + changes.length + t(" 条记录确认为已同步至实现")}</button></footer></form></Modal>;
 }

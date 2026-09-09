@@ -1,3 +1,4 @@
+import { randomUUID } from './uuid';
 import { t } from './i18n';
 import { useEffect, useRef, useState, useMemo, type ReactNode } from 'react';
 import { EditorTools } from './EditorTools';
@@ -32,8 +33,8 @@ export function DocumentEditor({ id, onStatus, heading }: {
     useEffect(() => {
         let disposed = false, blocked = false, editor: Editor | undefined, sending = false, pulling = false, unsubscribe = () => { }, retry: ReturnType<typeof setTimeout> | undefined;
         let batchSignature = '', batchRequestId = '';
-        const clientId = crypto.randomUUID(), recoveryKey = 'draft:' + getSnapshot()?.actor.userId + ':' + id;
-        let groupId = 'human:' + crypto.randomUUID(), lastBatch = 0, splitGroup = false;
+        const clientId = randomUUID(), recoveryKey = 'draft:' + getSnapshot()?.actor.userId + ':' + id;
+        let groupId = 'human:' + randomUUID(), lastBatch = 0, splitGroup = false;
         tools.onCommand = () => { splitGroup = true; };
         const saved = localStorage.getItem(recoveryKey);
         if (saved)
@@ -91,8 +92,8 @@ export function DocumentEditor({ id, onStatus, heading }: {
             const signature = JSON.stringify({ version: pending.version, steps: pending.steps.map(step => step.toJSON()) });
             if (signature !== batchSignature) {
                 batchSignature = signature;
-                batchRequestId = crypto.randomUUID();
-                if (splitGroup || Date.now()-lastBatch > 750) groupId = 'human:' + crypto.randomUUID();
+                batchRequestId = randomUUID();
+                if (splitGroup || Date.now()-lastBatch > 750) groupId = 'human:' + randomUUID();
                 lastBatch=Date.now(); splitGroup=false;
             }
             try {

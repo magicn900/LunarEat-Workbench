@@ -1,3 +1,4 @@
+import { randomUUID } from './uuid';
 import { useSyncExternalStore } from 'react';
 import { t } from './i18n';
 import type { Tree, Entity } from '../shared/model';
@@ -71,7 +72,7 @@ export async function reload() {
     return loading;
 }
 export function clearSnapshot() { identityGeneration++; snapshot = null; listeners.forEach(listener => listener()); }
-export async function apply(operations: unknown[], groupId?: string) { const requestId = crypto.randomUUID(); const result = await api('/workspace/operations', { requestId, groupId: groupId || requestId, operations }); await reload(); return result; }
+export async function apply(operations: unknown[], groupId?: string) { const requestId = randomUUID(); const result = await api('/workspace/operations', { requestId, groupId: groupId || requestId, operations }); await reload(); return result; }
 export const put = (entity: Entity, expected: Entity | null) => apply([{ type: 'put', entity, expected }]);
 export function notify(message: string, error = false) { window.dispatchEvent(new CustomEvent('notice', { detail: { message: t(message), error } })); }
 export function navigate(id: string) { window.dispatchEvent(new CustomEvent('open-entity', { detail: id })); }

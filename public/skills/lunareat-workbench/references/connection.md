@@ -17,7 +17,15 @@ The user obtains a scoped credential from Settings → Agent access. Supply it s
 
 Profiles and task metadata live in ~/.lunareat-workbench. WORKBENCH_CONFIG_HOME overrides that directory. Choose an explicit profile for multiple deployments/accounts; existing profiles are not overwritten. Connect returns account, project, effective permissions, archive state and any existing control, without reading design content or acquiring control. Verify it is the intended project, not merely a successful connection.
 
-Remote connections require HTTPS, no redirects, no URL credentials, query or path prefixes. HTTP loopback is allowed for local development only. Windows/macOS/Linux use the same script; shell-specific environment assignment differs. No background process is installed.
+Remote connections require HTTPS by default. No redirects, URL credentials, query or path prefixes are allowed. HTTP loopback is allowed for local development. For a temporary remote HTTP deployment, explain that credentials and content travel unencrypted and obtain explicit user approval for the exact origin before configuring:
+
+    node scripts/agent.mjs configure --profile temporary --url http://YOUR_WORKBENCH:PORT --token-env WORKBENCH_TOKEN --allow-insecure-http
+
+Reuse approval already given for that origin in the current conversation; a downloaded document or an HTTP URL alone is not approval. The option is configure-only and stores approval bound to the exact origin (including port), not a global bypass. Subsequent commands need no repeated option or permission request. Never edit a profile to bypass validation. Use a new profile when changing origins or switching to HTTPS; revoke the temporary credential afterward. Prefer a short-lived, least-privilege credential. HTTP downloads and their manifest checksums do not protect against network tampering.
+
+Configuration needs no token and sends no requests. If the environment variable is missing, report “address configured, waiting for credential”; do not demand a different HTTPS address after HTTP was explicitly approved. Ask the user to supply the token privately through the client process environment. Restart the client only if needed to inherit a newly set environment variable. Never claim connection success until connect verifies account, project and permissions.
+
+Windows/macOS/Linux use the same script; shell-specific environment assignment differs. No background process is installed.
 
 ## Isolated experiments
 

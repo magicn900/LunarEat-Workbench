@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'no
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { randomUUID, createHash } from 'node:crypto';
 import { Store } from '../src/server/store.js';
@@ -36,6 +37,35 @@ it('公开 kit 清单校验所有文件，不泄露服务器路径，connect 只
     const before=store.db.prepare('SELECT * FROM workspaces').all();
     const checked=(await app.inject({method:'POST',url:'/api/agent/connect',payload:{},headers:{authorization:'Bearer '+token}})).json();expect(checked.account.username).toBe('designer');expect(checked.project.id).toBe('demo');expect(checked.control).toBeNull();expect(checked.tree).toBeUndefined();expect(store.db.prepare('SELECT * FROM workspaces').all()).toEqual(before);
     const settings=(await app.inject({url:'/api/settings',headers:{cookie:'session=test-human'}})).json();expect(settings.mcp).toBeUndefined();expect(settings.connection.manifest).toBe('/api/agent/kit/manifest.json');
+});
+it('远程 HTTP 仅显式授权指定地址，缺少凭据不请求且不能复用到其他地址', async () => {
+    const configHome = join(directory, 'http-config');
+    const probe = join(directory, 'http-requests.json');
+    const mock = join(directory, 'http-fetch.mjs');
+    writeFileSync(mock, `import { writeFileSync } from 'node:fs'; globalThis.fetch = async (url, options) => { writeFileSync(${JSON.stringify(probe)}, JSON.stringify({ url, redirect: options.redirect })); return new Response(JSON.stringify({ok:true, account:{username:'test'}, project:{id:'demo'}, permissions:['workspace.read']}), {status:200,headers:{'content-type':'application/json'}}); };`);
+    const environment = { WORKBENCH_CONFIG_HOME: configHome, WORKBENCH_TOKEN: 'transport-test-token', NODE_OPTIONS: '--import ' + pathToFileURL(mock).href };
+    expect((await invoke(['configure', '--url', 'http://example.com:14311'], environment)).code).toBe('HTTPS_REQUIRED');
+    expect(existsSync(probe)).toBe(false);
+    const configured = await invoke(['configure', '--url', 'http://example.com:14311', '--allow-insecure-http'], environment);
+    expect(configured.configured).toBe(true); expect(configured.warning).toContain('unencrypted');
+    const configFile = join(configHome, 'default.json'); const saved = JSON.parse(readFileSync(configFile, 'utf8'));
+    expect(saved.insecureHttpOrigin).toBe('http://example.com:14311'); expect(JSON.stringify(saved)).not.toContain('transport-test-token');
+    expect((await invoke(['connect'], { ...environment, WORKBENCH_TOKEN: '' })).code).toBe('CREDENTIAL_REQUIRED'); expect(existsSync(probe)).toBe(false);
+    expect((await invoke(['connect', '--allow-insecure-http'], environment)).code).toBe('ARGUMENT');
+    expect((await invoke(['connect'], environment)).ok).toBe(true);
+    expect(JSON.parse(readFileSync(probe, 'utf8'))).toEqual({url:'http://example.com:14311/api/agent/connect',redirect:'error'});
+    for (const changed of [{ ...saved, url: 'http://example.com:14312' }, { ...saved, url: 'http://other.example:14311' }, { ...saved, insecureHttpOrigin: true }]) {
+        writeFileSync(configFile, JSON.stringify(changed)); expect((await invoke(['connect'], environment)).code).toBe('CONFIG_INVALID');
+    }
+});
+it('HTTP 开关不能用于其他协议、重复选项或非配置命令', async () => {
+    for (const origin of ['https://example.com', 'ftp://example.com', 'http://localhost']) {
+        expect((await invoke(['configure','--profile','invalid-http','--url',origin,'--allow-insecure-http'])).code).toBe('ARGUMENT');
+    }
+    expect((await invoke(['configure','--url','http://example.com','--allow-insecure-http','--allow-insecure-http'])).code).toBe('ARGUMENT');
+    expect((await invoke(['configure','--profile','safe-https','--url','https://example.com'])).configured).toBe(true);
+    expect(JSON.parse(readFileSync(join(directory,'config/safe-https.json'),'utf8')).insecureHttpOrigin).toBeUndefined();
+    expect((await invoke(['configure','--help'])).usage).toContain('--allow-insecure-http');
 });
 it('配置不存密钥，拒绝不安全地址、覆盖和缺失凭据',async()=>{
     expect((await invoke(['configure','--url','http://example.com'])).code).toBe('HTTPS_REQUIRED');
