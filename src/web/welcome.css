@@ -1,0 +1,27 @@
+.welcome-shell { min-height:100dvh; background:var(--surface-subtle); }
+.welcome-header { min-height:88px; padding:20px clamp(20px,4vw,64px); display:flex; align-items:center; justify-content:space-between; gap:24px; border-bottom:1px solid var(--border); background:var(--paper); }
+.welcome-account { width:240px; min-width:0; }
+.welcome-main { min-height:calc(100dvh - 88px); padding:clamp(40px,10vh,120px) 24px 48px; display:flex; justify-content:center; align-items:flex-start; }
+.welcome-card { width:100%; max-width:700px; padding:clamp(24px,4vw,48px); background:var(--paper); border:1px solid var(--border); border-radius:14px; }
+.welcome-symbol { display:grid; place-items:center; width:56px; height:56px; border-radius:12px; background:var(--green-light); color:var(--accent); margin-bottom:28px; }
+.welcome-eyebrow { font-size:12px; color:var(--muted); margin:0 0 10px; }
+.welcome-card h1 { font-size:clamp(24px,2.4vw,32px); line-height:1.35; margin:0 0 18px; letter-spacing:-.5px; overflow-wrap:anywhere; text-wrap:balance; }
+.welcome-description { font-size:14px; color:var(--muted); line-height:1.85; margin:0; }
+.welcome-project { display:flex; align-items:center; gap:12px; margin-top:24px; padding:16px; border:1px solid var(--border); border-radius:8px; }
+.welcome-project span { display:block; font-size:12px; color:var(--muted); margin-bottom:5px; }
+.welcome-project strong { font-size:15px; overflow-wrap:anywhere; }
+.welcome-project>div,.welcome-feature>div { min-width:0; }
+.welcome-project>svg,.welcome-feature>svg { flex-shrink:0; color:var(--accent); }
+.welcome-feature { display:flex; align-items:flex-start; gap:14px; padding-top:24px; }
+.welcome-feature h2 { font-size:16px; margin:0 0 7px; }
+.welcome-feature p { margin:0; color:var(--muted); font-size:13px; line-height:1.7; }
+.welcome-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:30px; }
+.welcome-actions :is(a,button) { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:42px; padding:10px 15px; font-size:13px; border-radius:7px; text-decoration:none; }
+.welcome-actions a { border:1px solid transparent; transition:filter .15s,transform .15s; }
+.welcome-actions a:hover { filter:brightness(1.12); }
+.welcome-actions a:active { transform:translateY(1px); }
+.welcome-actions a:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.welcome-notice { margin:22px 0 0; min-height:20px; font-size:12px; line-height:1.6; color:var(--muted); }
+.welcome-main.is-inspiration { display:block; max-width:1200px; margin:auto; padding-top:32px; }
+.welcome-back { display:flex; align-items:center; gap:8px; margin-bottom:24px; }
+@media(max-width:600px) { .welcome-header { padding:16px; min-height:76px; gap:12px; }.welcome-brand small { display:none; }.welcome-brand { font-size:16px; gap:8px; }.welcome-account { width:180px; }.welcome-main { padding:28px 16px; min-height:calc(100dvh - 76px); }.welcome-card { padding:24px; }.welcome-symbol { margin-bottom:22px; }.welcome-actions { align-items:stretch; flex-direction:column; } }

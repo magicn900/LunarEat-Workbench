@@ -1,0 +1,14 @@
+services:
+  workbench:
+    build: .
+    init: true
+    ports:
+      - "127.0.0.1:14311:14311"
+    volumes:
+      - workbench-data:/data
+    environment:
+      WORKBENCH_ORIGIN: ${WORKBENCH_ORIGIN:-http://127.0.0.1:14311}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    restart: unless-stopped
+volumes:
+  workbench-data:

@@ -1,0 +1,6 @@
+.workspace-identity { display:flex; align-items:center; gap:10px; min-width:0; }
+.workspace-symbol { width:32px; height:32px; flex:0 0 32px; display:grid; place-items:center; color:var(--muted); border:1px solid var(--border); background:var(--paper); border-radius:7px; }
+.workspace-identity-text { min-width:0; display:flex; flex-direction:column; gap:3px; }
+.workspace-caption { font-size:11px; line-height:1.3; color:var(--muted); }
+.workspace-project { display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14px; line-height:1.5; font-weight:650; color:var(--text-28372f); }
+.workspace-name { font-size:15px; line-height:1.5; font-weight:600; color:var(--text-28372f); }

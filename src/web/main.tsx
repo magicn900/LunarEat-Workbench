@@ -1,0 +1,10 @@
+import { createRoot } from 'react-dom/client';
+import { Portal } from './Portal';
+import './styles.css';
+import './structure.css';
+import './navigation.css';
+import './authoring.css';
+import './publishing.css';
+import './theme.css';
+import './appearance';
+createRoot(document.getElementById('root')!).render(<Portal />);

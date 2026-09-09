@@ -1,0 +1,59 @@
+{
+  "name": "lunareat-workbench",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "concurrently -k \"tsx watch src/server/main.ts\" \"vite --host 127.0.0.1\"",
+    "build": "tsc --noEmit && vite build",
+    "start": "tsx src/server/main.ts",
+    "seed": "tsx src/server/admin.ts seed",
+    "admin": "tsx src/server/admin.ts",
+    "mcp": "tsx src/agent/main.ts",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.0.2",
+    "@fastify/static": "8.3.0",
+    "@fastify/websocket": "11.2.0",
+    "@milkdown/core": "7.22.1",
+    "@milkdown/ctx": "7.22.1",
+    "@milkdown/preset-commonmark": "7.22.1",
+    "@milkdown/preset-gfm": "7.22.1",
+    "@milkdown/prose": "7.22.1",
+    "@milkdown/utils": "7.22.1",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "better-sqlite3": "13.0.3",
+    "fastify": "5.12.3",
+    "jsdom": "^30.0.1",
+    "lucide-react": "^0.577.0",
+    "node-diff3": "^3.2.1",
+    "prosemirror-collab": "1.3.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "tsx": "^4.23.13",
+    "unified": "11.0.5",
+    "yaml": "^2.8.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/jsdom": "^30.0.0",
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^5.1.0",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.3",
+    "vite": "8.2.2",
+    "vitest": "^4.0.18"
+  }
+}

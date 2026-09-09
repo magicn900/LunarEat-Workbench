@@ -1,0 +1,14 @@
+node_modules
+.local-data
+dist
+test-results
+playwright-report
+.git
+.env
+
+.artifacts/
+.env.*
+!.env.example
+*.pem
+*.key
+*.log

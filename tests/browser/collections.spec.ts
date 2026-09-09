@@ -1,0 +1,54 @@
+import { test, expect } from '@playwright/test';
+
+test('集合增删、记录和视图删除均可在集合页撤销', async ({ page }) => {
+    await page.goto('/');
+    await page.getByLabel('账号', { exact: true }).fill('designer');
+    await page.getByLabel('密码', { exact: true }).fill('e2e-password-123');
+    await page.getByRole('button', { name: '登录' }).click();
+    await page.getByRole('button', { name: '新建内容', exact: true }).click();
+    page.once('dialog', dialog => dialog.accept('删除闭环测试'));
+    await page.getByRole('menuitem', { name: '新建集合', exact: true }).click();
+    const section = page.locator('.collection-section').filter({ has: page.getByRole('heading', { name: '删除闭环测试', exact: true }) });
+    await expect(section).toBeVisible();
+    await section.getByRole('button', { name: '新增视图', exact: true }).click();
+    page.once('dialog', dialog => dialog.accept('测试记录'));
+    await section.getByRole('button', { name: '记录', exact: true }).click();
+    await expect(section.getByRole('button', { name: '测试记录', exact: true })).toBeVisible();
+    const remove = async (title: string, action: string) => {
+        await section.getByRole('button',{name:'更多操作 '+title,exact:true}).click();
+        await page.getByRole('menuitem',{name:action}).click();
+    };
+    const undo = async () => {
+        await page.locator('.activity-list article').first().getByRole('button', { name: '撤销变更组' }).click();
+    };
+    page.once('dialog', dialog => dialog.accept());
+    await remove('测试记录','删除记录');
+    await expect(section.getByRole('button', { name: '测试记录', exact: true })).toHaveCount(0);
+    await expect(page.locator('.activity-list article').first()).toContainText('删除 · 测试记录');
+    await undo();
+    await expect(section.getByRole('button', { name: '测试记录', exact: true })).toBeVisible();
+    page.once('dialog', dialog => dialog.dismiss());
+    await remove('删除闭环测试','删除集合');
+    await expect(section).toBeVisible();
+    page.once('dialog', dialog => dialog.accept());
+    await remove('删除闭环测试','删除集合');
+    await expect(section).toHaveCount(0);
+    await expect(page.locator('.activity-list article').first()).toContainText('3 处变化');
+    await undo();
+    await expect(section.getByRole('button', { name: '测试记录', exact: true })).toBeVisible();
+    page.once('dialog', dialog => dialog.accept());
+    await remove('删除闭环测试视图','删除视图');
+    await expect(section.locator('.collection-grid')).toHaveCount(0);
+    await expect(page.locator('.activity-list article').first()).toContainText('删除 · 删除闭环测试视图');
+    await undo();
+    await expect(section.getByRole('button', { name: '测试记录', exact: true })).toBeVisible();
+    await page.reload();
+    await page.locator('.collection-navigation').getByRole('button', { name: '删除闭环测试', exact: true }).click();
+    await expect(section.getByRole('button', { name: '测试记录', exact: true })).toBeVisible();
+    await page.locator('.collection-navigation').getByRole('button', { name: '技能', exact: true }).click();await page.locator('.collection-navigation').getByRole('button',{name:'技能速览',exact:true}).click();
+    page.once('dialog', async dialog => { expect(dialog.message()).toContain('战斗概览'); await dialog.accept(); });
+    await page.locator('[data-view="skills-table"]').getByRole('button',{name:'更多操作 技能速览',exact:true}).click();
+    await page.getByRole('menuitem',{name:'删除视图'}).click();
+    await expect(page.locator('[data-view="skills-table"]')).toBeVisible();
+    await page.screenshot({ path: 'test-results/collections.png', fullPage: true });
+});

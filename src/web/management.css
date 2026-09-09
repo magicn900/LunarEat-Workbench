@@ -1,0 +1,25 @@
+.project-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin:24px 0; }
+.project-toolbar>label { display:flex; flex-direction:row; align-items:center; gap:8px; flex:1; margin:0; min-width:180px; }
+.project-toolbar input { width:100%; }
+.project-manager .admin-grid { display:grid; grid-template-columns:230px minmax(0,1fr); border:1px solid var(--border); border-radius:8px; background:var(--paper); }
+.project-list { padding:12px; border-right:1px solid var(--border); }
+.project-list>button { width:100%; text-align:left; padding:14px 10px; margin-bottom:6px; }
+.project-list>button[aria-current=true] { background:var(--green-light); border-color:var(--accent); }
+.project-list>button { display:flex; align-items:center; gap:12px; }
+.project-list strong { overflow-wrap:anywhere; }
+.project-list small { display:block; margin-top:6px; }
+.project-tabs { display:flex; gap:8px; border-bottom:1px solid var(--border); padding:18px 0; margin-bottom:24px; }
+.project-tabs button[aria-current=page] { background:var(--green-light); color:var(--accent); border-color:var(--accent); }
+.project-overview p,.project-danger p,.removal-dialog p { line-height:1.8; }
+.project-danger h3 { display:flex; align-items:center; gap:10px; }
+.project-danger hr { margin:30px 0; border:0; border-top:1px solid var(--border); }
+.removal-counts { display:grid; grid-template-columns:minmax(130px,1fr) minmax(0,2fr); gap:12px 20px; margin:24px 0; font-size:13px; }
+.removal-counts dt { color:var(--muted); }.removal-counts dd { margin:0; overflow-wrap:anywhere; }
+.removal-dialog footer { display:flex; flex-wrap:wrap; gap:10px; justify-content:flex-end; margin-top:24px; }
+.removal-dialog li { margin:8px 0; }.removal-dialog input { width:100%; }
+.admin-more { position:relative; }.admin-more summary { cursor:pointer; padding:10px 14px; border:1px solid var(--border); border-radius:6px; list-style:none; }
+.admin-more summary:hover { background:var(--surface-subtle); }.admin-more[open] summary { border-color:var(--accent); }
+.admin-more>div { position:absolute; right:0; top:calc(100% + 6px); z-index:5; min-width:160px; padding:8px; background:var(--surface-raised); border:1px solid var(--border); border-radius:8px; box-shadow:0 8px 24px var(--shadow); }
+.admin-more button { width:100%; }
+.project-archive-notice { margin:0; padding:12px 24px; color:var(--text); background:var(--green-light); border-bottom:1px solid var(--border); font-size:13px; }
+@media(max-width:700px) { .project-manager .admin-grid { grid-template-columns:1fr; }.project-list { border-right:0; border-bottom:1px solid var(--border); max-height:220px; overflow:auto; } .project-toolbar>label { flex-basis:100%; }.project-toolbar>select { flex:1; }.project-tabs { flex-wrap:wrap; }.removal-counts { grid-template-columns:1fr 1fr; }.project-detail { min-width:0; } }
