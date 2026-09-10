@@ -38,7 +38,7 @@ class MathView implements NodeView {
     private delayed: ReturnType<typeof setTimeout> | undefined;
     private source = '';
     private active = false;
-    constructor(private node: ProseNode, private view: EditorView, private getPos: () => number | undefined, private remove: () => void) {
+    constructor(private node: ProseNode, private view: EditorView, private getPos: () => number | undefined, private reposition: () => void, private remove: () => void) {
         const display = node.type.name === 'math_block';
         this.dom = document.createElement(display ? 'div' : 'span');
         this.dom.className = 'math-node'; this.dom.dataset.math = display ? 'block' : 'inline';
@@ -82,12 +82,12 @@ class MathView implements NodeView {
                 const label = document.createElement('small'); label.textContent = t('实时预览 · 自动保存');
                 const content = document.createElement('div'); content.className = 'math-preview-content';
                 this.preview.append(label, content); document.body.append(this.preview);
-                this.previewSize = new ResizeObserver(this.positionPreview); this.previewSize.observe(this.preview);
+                this.previewSize = new ResizeObserver(this.reposition); this.previewSize.observe(this.preview);
                 this.preview.addEventListener('mousedown', event => event.preventDefault());
                 this.cancelPreview = renderMath(content, this.source, this.node.isBlock);
             } else { this.cancelPreview(); this.previewSize?.disconnect(); this.previewSize = null; this.preview?.remove(); this.preview = null; }
         }
-        this.positionPreview();
+        this.reposition();
     }
     positionPreview = () => {
         if (!this.preview) return;
@@ -107,10 +107,26 @@ class MathView implements NodeView {
     destroy() { this.previewSize?.disconnect(); clearTimeout(this.delayed); this.cancelOutput(); this.cancelPreview(); this.preview?.remove(); this.remove(); }
 }
 export function mathEditingPlugin(parse: (source: string) => ProseNode) {
-    const nodes = new Set<MathView>();
-    const refresh = () => nodes.forEach(node => node.refresh());
+    const nodes = new WeakMap<globalThis.Node, MathView>();
+    let editorView: EditorView | null = null, active: MathView | undefined, frame: number | undefined;
+    const reposition = () => {
+        if (active && frame === undefined) frame = requestAnimationFrame(() => { frame = undefined; active?.positionPreview(); });
+    };
+    const refresh = () => {
+        if (!editorView) return;
+        const { selection } = editorView.state;
+        let next: MathView | undefined;
+        if (editorView.hasFocus() && selection instanceof TextSelection && isMath(selection.$from.parent.type.name) && selection.to <= selection.$from.end()) {
+            const dom = editorView.nodeDOM(selection.$from.before());
+            if (dom) next = nodes.get(dom);
+        }
+        const previous = active; active = next;
+        if (previous !== active) previous?.refresh();
+        active?.refresh();
+    };
     const factory = (node: ProseNode, view: EditorView, getPos: () => number | undefined) => {
-        const instance = new MathView(node, view, getPos, () => nodes.delete(instance)); nodes.add(instance); return instance;
+        const instance = new MathView(node, view, getPos, reposition, () => { nodes.delete(instance.dom); if (active === instance) active = undefined; });
+        nodes.set(instance.dom, instance); return instance;
     };
     return new Plugin({
         props: {
@@ -166,9 +182,10 @@ export function mathEditingPlugin(parse: (source: string) => ProseNode) {
                 view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, position + 1 + (forward ? 0 : node.content.size)))); return true;
             }
         },
-        view: () => {
-            window.addEventListener('scroll', refresh, true); window.addEventListener('resize', refresh);
-            return { update: refresh, destroy: () => { window.removeEventListener('scroll', refresh, true); window.removeEventListener('resize', refresh); nodes.clear(); } };
+        view: view => {
+            editorView = view; refresh();
+            window.addEventListener('scroll', reposition, true); window.addEventListener('resize', reposition);
+            return { update: refresh, destroy: () => { window.removeEventListener('scroll', reposition, true); window.removeEventListener('resize', reposition); if (frame !== undefined) cancelAnimationFrame(frame); editorView = null; active = undefined; } };
         }
     });
 }

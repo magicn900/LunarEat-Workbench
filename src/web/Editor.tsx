@@ -4,6 +4,7 @@ import { randomUUID } from './uuid';
 import { t } from './i18n';
 import { Component, useCallback, useEffect, useRef, useState, useMemo, type ReactNode } from 'react';
 import { MarkdownEditor } from './MarkdownEditor';
+import { DocumentBackup } from './DocumentBackup';
 import './markdown-source.css';
 import { EditorTools } from './EditorTools';
 import { EditorToolsController } from './editorCommands';
@@ -61,9 +62,8 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
         const saved = localStorage.getItem(recoveryKey);
         if (saved)
             setRecovery(saved);
-        const keep = () => { if (editor) try {
-            editor.action(ctx => { const text = ctx.get(serializerCtx)(ctx.get(editorViewCtx).state.doc); localStorage.setItem(recoveryKey, text); });
-        } catch { onStatusRef.current('无法生成恢复副本，请保留当前页面'); } };
+        const backup = new DocumentBackup(recoveryKey, doc => editor!.action(ctx => ctx.get(serializerCtx)(doc)), () => onStatusRef.current('无法生成恢复副本，请保留当前页面'));
+        const keep = () => { if (editor) try { backup.schedule(editor.action(ctx => ctx.get(editorViewCtx).state.doc)); backup.flush(); } catch { onStatusRef.current('无法生成恢复副本，请保留当前页面'); } };
         const fallback = (error: any) => { if (disposed) return; blocked = true; keep(); onStatusRef.current('已切换 Markdown 源码'); onFailure(error.message || '富文本不可用'); };
         const consume = (remote: any) => {
             if (remote.schemaVersion !== documentSchemaVersion) { blocked = true; keep(); notify(t("编辑器协议已更新，请保存恢复副本并刷新页面"), true); return; }
@@ -82,6 +82,7 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
                 }
                 if (remote.clientIds.some((remoteId: string) => remoteId !== clientId)) splitGroup = true;
                 const before = sendableSteps(view.state)?.steps.length || 0;
+                if (before && remote.clientIds.some((remoteId: string) => remoteId !== clientId)) keep();
                 view.dispatch(receiveTransaction(view.state, remote.steps.map((step: any) => Step.fromJSON(view.state.schema, step)), remote.clientIds));
                 const after = sendableSteps(view.state)?.steps.length || 0;
                 if (before > 0 && after < before && !remote.clientIds.includes(clientId)) {
@@ -107,13 +108,12 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
                 return;
             const pending = editor.action(ctx => sendableSteps(ctx.get(editorViewCtx).state));
             if (!pending) {
-                if(!recoveryRef.current) localStorage.removeItem(recoveryKey);
+                if(!recoveryRef.current) backup.clear();
                 onStatusRef.current('已保存');
                 return;
             }
             sending = true;
             onStatusRef.current('保存中');
-            keep();
             const signature = JSON.stringify({ version: pending.version, steps: pending.steps.map(step => step.toJSON()) });
             if (signature !== batchSignature) {
                 batchSignature = signature;
@@ -123,11 +123,14 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
             }
             try {
                 const result = await api('/documents/' + id + '/steps', { requestId: batchRequestId, schemaVersion: documentSchemaVersion, version: pending.version, steps: pending.steps.map(step => step.toJSON()), clientId, groupId });
+                if (disposed) return;
                 consume(result.document);
-                if (!editor.action(ctx => sendableSteps(ctx.get(editorViewCtx).state)))
-                    localStorage.removeItem(recoveryKey);
+                if (!recoveryRef.current && !editor.action(ctx => sendableSteps(ctx.get(editorViewCtx).state)))
+                    backup.clear();
             }
             catch (error: any) {
+                if (disposed) return;
+                keep();
                 if (error.code === 'DOCUMENT_RENDER_FAILED' || error.code === 'DOCUMENT_SCHEMA_CHANGED' || error.status >= 500 || error instanceof RangeError) { fallback(error); return; }
                 if (error.status === 409) {
                     const current = await api('/documents/' + id + '?since=' + pending.version);
@@ -174,8 +177,8 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
                 if (disposed)
                     return;
                 const replacedKeymaps = new Set<MilkdownPlugin>([...strongKeymap, ...emphasisKeymap, ...strikethroughKeymap]);
-                editor = await Editor.make().config(ctx => { ctx.set(rootCtx, host.current); ctx.set(defaultValueCtx, { type: 'json', value: initial.doc }); }).use(commonmark.filter(plugin => !replacedKeymaps.has(plugin))).use(gfm.filter(plugin => !replacedKeymaps.has(plugin))).use(embedRemark).use(embedSchema).use(highlightRemark).use(highlightSchema).use(mathRemark).use(mathSchemas).use($prose(ctx => mathEditingPlugin(text => ctx.get(parserCtx)(text)))).use($prose(() => tools.plugin)).use($prose(() => tools.images.plugin)).use($prose(() => collab({ version: initial.version, clientID: clientId }))).use(widgets).use($prose(() => new Plugin({ props: { editable: () => !locked() }, view: () => ({ update() { if (editor) {
-                            keep();
+                editor = await Editor.make().config(ctx => { ctx.set(rootCtx, host.current); ctx.set(defaultValueCtx, { type: 'json', value: initial.doc }); }).use(commonmark.filter(plugin => !replacedKeymaps.has(plugin))).use(gfm.filter(plugin => !replacedKeymaps.has(plugin))).use(embedRemark).use(embedSchema).use(highlightRemark).use(highlightSchema).use(mathRemark).use(mathSchemas).use($prose(ctx => mathEditingPlugin(text => ctx.get(parserCtx)(text)))).use($prose(() => tools.plugin)).use($prose(() => tools.images.plugin)).use($prose(() => collab({ version: initial.version, clientID: clientId }))).use(widgets).use($prose(() => new Plugin({ props: { editable: () => !locked() }, view: () => ({ update(view, previous) { if (editor && view.state.doc !== previous.doc) {
+                            if (sendableSteps(view.state)) backup.schedule(view.state.doc);
                             queueMicrotask(() => void pump());
                         } } }) }))).create();
                 if (disposed) {
@@ -218,6 +221,7 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
         const unregister = registerBuffer('document:' + id,{
             dirty:()=>!!recoveryRef.current || sending || !!editor?.action(ctx=>sendableSteps(ctx.get(editorViewCtx).state)),
             flush:async()=>{
+                if (editor?.action(ctx => !!sendableSteps(ctx.get(editorViewCtx).state))) keep();
                 if(recoveryRef.current || blocked) throw Error(t("正文有待恢复内容，请先处理恢复副本"));
                 const deadline=Date.now()+10000;
                 while(sending || editor?.action(ctx=>!!sendableSteps(ctx.get(editorViewCtx).state))) {
@@ -235,11 +239,14 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
             event.preventDefault();
         } };
         window.addEventListener('beforeunload', beforeUnload);
+        const preserve = () => { if (editor?.action(ctx => !!sendableSteps(ctx.get(editorViewCtx).state))) keep(); };
+        const visibility = () => { if (document.visibilityState === 'hidden') preserve(); };
+        window.addEventListener('pagehide', preserve); document.addEventListener('visibilitychange', visibility);
         return () => { disposed = true; unregister(); window.removeEventListener('editor-command', executeCommand); window.removeEventListener('document-find',openFind); window.removeEventListener('document-find-query',search); element?.removeEventListener('compositionend', compositionEnd); unsubscribe(); clearTimeout(retry); window.removeEventListener('beforeunload', beforeUnload); if (editor) {
             if (editor.action(ctx => !!sendableSteps(ctx.get(editorViewCtx).state)))
                 keep();
             void editor.destroy();
-        } };
+        } backup.cancel(); window.removeEventListener('pagehide', preserve); document.removeEventListener('visibilitychange', visibility); };
     }, [id]);
     return <div className="document-surface"><EditorTools controller={tools}/>{finding&&<div className="document-find"><input autoFocus aria-label={t("查找正文")} value={findText} onChange={event=>{setFindText(event.target.value);window.dispatchEvent(new CustomEvent('document-find-query',{detail:{text:event.target.value}}));}} onKeyDown={event=>{if(event.key==='Enter')window.dispatchEvent(new CustomEvent('document-find-query',{detail:{text:findText,backward:event.shiftKey}}));if(event.key==='Escape')setFinding(false);}}/><span>{findCount}</span><button onClick={()=>window.dispatchEvent(new CustomEvent('document-find-query',{detail:{text:findText}}))}>{t("下一处")}</button><button aria-label={t("关闭正文查找")} onClick={()=>setFinding(false)}>{t("关闭")}</button></div>}<div className="document-scroll">{heading}{recovery && <details className="recovery" open><summary>{t("本机保留了一份未确认输入，请对照后复制所需内容。")}</summary><textarea value={recovery} readOnly/><button onClick={() => { localStorage.removeItem('draft:' + getSnapshot()?.actor.userId + ':' + id); setRecovery(''); }}>{t("已检查，关闭副本")}</button></details>}<div className="document-editor" ref={host}/></div></div>;
 }
