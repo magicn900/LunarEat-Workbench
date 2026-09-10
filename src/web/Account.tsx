@@ -6,6 +6,7 @@ import type { Preferences } from '../shared/preferences';
 import { api } from './state';
 import { flushEditing } from './editing';
 import { applyAppearance } from './appearance';
+import { setShortcuts } from './shortcuts';
 import { Modal } from './Modal';
 import { ClipboardDialog } from './ClipboardDialog';
 import { PanelBoundary } from './PanelBoundary';
@@ -18,6 +19,8 @@ export function AccountProvider({ identity, projectId, switchProject, refreshIde
     const saving = useRef(false), trigger = useRef<HTMLElement | null>(null);
     useEffect(() => { setPreferences(previous => identity.preferences.version >= previous.version ? identity.preferences : previous); }, [identity.preferences]);
     useEffect(() => { applyAppearance(preferences); }, [preferences]);
+    useEffect(() => { setShortcuts(preferences.shortcuts || {}); }, [preferences]);
+    useEffect(() => () => setShortcuts({}), []);
     const savePreferences = async (next: Preferences) => {
         if (saving.current) throw Error(t('设置正在保存，请稍候'));
         saving.current = true;

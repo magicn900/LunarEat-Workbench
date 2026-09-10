@@ -1,6 +1,7 @@
 import { randomUUID } from './uuid';
 import { copyText } from './clipboard';
 import { t } from './i18n';
+import { shortcutLabel } from './shortcuts';
 import { apply, getSnapshot, navigate, put, notify } from './state';
 import { deleteEntity } from './DeleteEntity';
 import { flushEditing, locked, stepHistory } from './editing';
@@ -29,21 +30,21 @@ export function commands(target: Target, scope?: string): Command[] {
     const result:Command[]=[];
     if(entity){
         if(entity.kind==='object')result.push({id:'open',label:t("打开记录"),run:()=>navigate(entity.id)});
-        result.push({id:'rename',label:t("重命名"),shortcut:'F2',disabled,run:async()=>{await flushEditing();const current=getSnapshot()!.tree[entity.id];const title=prompt(t("新名称"),current.title);if(title?.trim())await put({...current,title:title.trim()},current);}});
+        result.push({id:'rename',label:t("重命名"),shortcut:shortcutLabel('rename'),disabled,run:async()=>{await flushEditing();const current=getSnapshot()!.tree[entity.id];const title=prompt(t("新名称"),current.title);if(title?.trim())await put({...current,title:title.trim()},current);}});
         if(entity.kind==='collection')result.push({id:'schema',label:t("编辑字段结构"),disabled,run:()=>dispatch('edit-schema',entity.id)},{id:'add-view',label:t("新增视图"),disabled,run:()=>createCollectionView(entity.id)});
         if(entity.kind==='view'){
             for(const [layout,title] of [['table','表格'],['list','列表'],['cards','卡片']] as const)result.push({id:'layout-'+layout,label:t("切换为")+title,disabled:disabled||entity.layout===layout,run:()=>put({...entity,layout},entity)});
             result.push({id:'columns',label:t("配置显示字段"),disabled,run:()=>{const columns=prompt(t("可见字段标识，以逗号分隔"),entity.columns.join(','));if(columns!==null)return put({...entity,columns:columns.split(',').map(item=>item.trim()).filter(Boolean)},entity);}});
         }
         if(entity.kind==='object')result.push({id:'duplicate',label:t("复制记录"),disabled,run:()=>{const id=randomUUID();return put({...entity,id,title:entity.title+' 副本',path:'记录/'+id+'.md'},null);}},{id:'copy-link',label:t("复制内部链接"),run:async()=>{if(await copyText('['+entity.title+'](doc:'+entity.id+')'))notify(t('已复制'));}},{id:'move',label:t("移动页面"),disabled,run:()=>{const path=prompt(t("目标文件路径"),entity.path);if(path?.trim())return put({...entity,path:path.trim()},entity);}});
-        result.push({id:'delete',label:entity.kind==='collection'?t("删除集合"):entity.kind==='view'?t("删除视图"):t("删除记录"),shortcut:'Delete',danger:true,disabled,run:()=>deleteEntity(entity)});
+        result.push({id:'delete',label:entity.kind==='collection'?t("删除集合"):entity.kind==='view'?t("删除视图"):t("删除记录"),shortcut:shortcutLabel('delete'),danger:true,disabled,run:()=>deleteEntity(entity)});
     }else if(target.directory){
         const path=target.directory;
-        result.push({id:'rename',label:t("移动／重命名目录"),shortcut:'F2',disabled,run:()=>{const to=prompt(t("新的目录路径"),path);if(to&&to!==path)return apply([{type:'directory',from:path,to,head:getSnapshot()!.workspace.head}]);}},
+        result.push({id:'rename',label:t("移动／重命名目录"),shortcut:shortcutLabel('rename'),disabled,run:()=>{const to=prompt(t("新的目录路径"),path);if(to&&to!==path)return apply([{type:'directory',from:path,to,head:getSnapshot()!.workspace.head}]);}},
         {id:'new-page',label:t("新建子页面"),disabled,run:()=>{const title=prompt(t("页面标题"));if(!title?.trim())return;const id=randomUUID();return put({id,kind:'object',title,path:path+'/'+id+'.md',collection:null,fields:{},body:'# '+title},null);}},
         {id:'new-folder',label:t("新建子目录"),disabled,run:()=>{const title=prompt(t("子目录名称"));if(!title?.trim())return;const id=randomUUID();return put({id,kind:'folder',title,path:path+'/'+title+'/__directory.json'},null);}},
-        {id:'delete',label:t("删除目录"),shortcut:'Delete',danger:true,disabled,run:async()=>{await flushEditing();const current=getSnapshot()!;const ids=new Set(Object.values(current.tree).filter(entity=>entity.path.startsWith(path+'/')).map(entity=>entity.id));if(deletionBlockers(current.tree,ids).length)throw Error(t("目录内容被外部引用，请先解除引用"));if(confirm(t("删除目录及其中 ")+ids.size+t(" 个对象？可撤销。")))await apply([{type:'directory',from:path,to:null,head:current.workspace.head}]);}});
+        {id:'delete',label:t("删除目录"),shortcut:shortcutLabel('delete'),danger:true,disabled,run:async()=>{await flushEditing();const current=getSnapshot()!;const ids=new Set(Object.values(current.tree).filter(entity=>entity.path.startsWith(path+'/')).map(entity=>entity.id));if(deletionBlockers(current.tree,ids).length)throw Error(t("目录内容被外部引用，请先解除引用"));if(confirm(t("删除目录及其中 ")+ids.size+t(" 个对象？可撤销。")))await apply([{type:'directory',from:path,to:null,head:current.workspace.head}]);}});
     }
-    result.push({id:'undo',label:t("撤销"),shortcut:'Ctrl+Z',disabled:disabled||!historyScope,run:()=>stepHistory('undo',historyScope)},{id:'redo',label:t("重做"),shortcut:'Ctrl+Shift+Z',disabled:disabled||!historyScope,run:()=>stepHistory('redo',historyScope)});
+    result.push({id:'undo',label:t("撤销"),shortcut:shortcutLabel('undo'),disabled:disabled||!historyScope,run:()=>stepHistory('undo',historyScope)},{id:'redo',label:t("重做"),shortcut:shortcutLabel('redo'),disabled:disabled||!historyScope,run:()=>stepHistory('redo',historyScope)});
     return [...result.filter(command=>!command.danger),...result.filter(command=>command.danger)];
 }

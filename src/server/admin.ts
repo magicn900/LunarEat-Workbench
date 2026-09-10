@@ -72,6 +72,7 @@ try {
         await store.db.backup(join(destination, 'state.sqlite'));
         cpSync(join(store.root, 'objects'), join(destination, 'objects'), { recursive: true });
         cpSync(join(store.root, 'git'), join(destination, 'git'), { recursive: true });
+        if (existsSync(join(store.root, 'attachments'))) cpSync(join(store.root, 'attachments'), join(destination, 'attachments'), { recursive: true });
         console.log('备份完成: ' + destination);
     }
     else

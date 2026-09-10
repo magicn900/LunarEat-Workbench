@@ -6,5 +6,7 @@ import './navigation.css';
 import './authoring.css';
 import './publishing.css';
 import './theme.css';
+import './reading.css';
+import './images.css';
 import './appearance';
 createRoot(document.getElementById('root')!).render(<Portal />);

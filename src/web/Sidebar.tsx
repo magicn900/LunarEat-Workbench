@@ -1,5 +1,6 @@
 import { WorkspaceIdentity } from './WorkspaceIdentity';
 import { t } from './i18n';
+import { shortcutLabel, useShortcuts } from './shortcuts';
 import { useEffect, useRef, useState } from 'react';
 import { BookOpen, Boxes, ChevronDown, ChevronRight, FilePlus2, FolderPlus, LayoutGrid, List, Plus, Search, StickyNote, Table2, X } from 'lucide-react';
 import { type Snapshot, navigate, notify } from './state';
@@ -57,6 +58,7 @@ export function Sidebar({ snapshot, tab, selected, collectionId, viewId, query, 
     onSearch: (query: string) => void; onTab: (tab: string) => void; createDocument: () => Promise<void>; createCollection: () => Promise<void>; open: boolean; onClose: () => void;
 }) {
     const sidebar = useRef<HTMLElement>(null);
+    useShortcuts();
     useEffect(() => {
         if (open && window.matchMedia('(max-width: 760px)').matches) sidebar.current?.querySelector<HTMLInputElement>('input')?.focus();
     }, [open]);
@@ -77,7 +79,7 @@ export function Sidebar({ snapshot, tab, selected, collectionId, viewId, query, 
             if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
         }}>
             <div className="sidebar-brand"><WorkspaceIdentity projectName={snapshot.project.name}/><button className="icon sidebar-close" aria-label={t("关闭导航")} onClick={onClose}><X size={18}/></button></div>
-            <label className="search sidebar-search"><Search size={15}/><input aria-label={t("搜索策划")} placeholder={t("搜索策划…")} value={query} onChange={event => onSearch(event.target.value)}/>{query ? <button className="icon" aria-label={t("清除策划搜索")} onClick={() => onSearch('')}><X size={13}/></button> : <kbd title="Ctrl+Shift+F">⌕</kbd>}</label>
+            <label className="search sidebar-search"><Search size={15}/><input aria-label={t("搜索策划")} placeholder={t("搜索策划…")} value={query} onChange={event => onSearch(event.target.value)}/>{query ? <button className="icon" aria-label={t("清除策划搜索")} onClick={() => onSearch('')}><X size={13}/></button> : <kbd title={shortcutLabel('search')}>⌕</kbd>}</label>
             <div className="sidebar-content" data-history-scope="workspace">
                 {query.trim() ? <section className="search-results" aria-label={t("策划搜索结果")}><div className="scope-heading">{t("搜索结果")} <span>{matching.length}</span></div>{matching.map(entity => <div className="search-result" data-entity-id={entity.id} key={entity.id}><button className="nav-item" onClick={() => navigate(entity.id)}><BookOpen size={15}/><span>{entity.title}<small>{entity.kind === 'object' && entity.collection ? snapshot.tree[entity.collection]?.title : t("独立页面")}</small></span></button><EntityMenuButton id={entity.id} title={entity.title}/></div>)}{!matching.length && <p className="nav-hint">{t("没有匹配的策划内容")}</p>}<p className="nav-hint">{t("不包含共享灵感池")}</p></section> : <>
                     <div className="scope-heading"><span>{t("我的草稿")}</span><NewContentMenu createDocument={createDocument} createCollection={createCollection}/></div>

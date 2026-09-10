@@ -15,11 +15,11 @@ const prefs = async () => (await app.inject({ url: '/api/identity', headers: hea
 const login = async (username: string, password = 'account-test-password') => (await app.inject({ method: 'POST', url: '/api/login', headers: { 'x-workbench-client': 'test' }, payload: { username, password } })).headers['set-cookie']!.toString().split(';')[0];
 beforeAll(async () => { directory = mkdtempSync(join(tmpdir(), 'workbench-settings-')); store = new Store(directory); seed(store, 'account-test-password'); userId = createUser(store, 'settings-owner', 'account-test-password', 'demo'); codec = await createCodec(); app = await createApp(new Service(store, codec)); cookie = await login('settings-owner'); otherCookie = await login('designer'); }, 30000);
 afterAll(async () => { await app?.close(); await codec?.close(); store?.close(); if (directory?.startsWith(join(tmpdir(), 'workbench-settings-'))) rmSync(directory, { recursive: true, force: true }); });
-it('旧账号默认跟随系统和中文，不写入设计数据', async () => { expect(await prefs()).toEqual({ theme: 'system', language: 'zh-CN', version: 0 }); expect(store.db.prepare('SELECT * FROM account_preferences').all()).toEqual([]); });
+it('旧账号默认跟随系统和中文，不写入设计数据', async () => { expect(await prefs()).toEqual({ theme: 'system', language: 'zh-CN', version: 0, shortcuts: {} }); expect(store.db.prepare('SELECT * FROM account_preferences').all()).toEqual([]); });
 it('偏好保存不改变草稿、事件、版本和其他账号', async () => {
     const before = (await app.inject({ url: '/api/workspace', headers: headers() })).json();
     expect((await post('/account/preferences', { theme: 'dark', language: 'en', version: 0 })).statusCode).toBe(200);
-    expect(await prefs()).toEqual({ theme: 'dark', language: 'en', version: 1 });
+    expect(await prefs()).toEqual({ theme: 'dark', language: 'en', version: 1, shortcuts: {} });
     const after = (await app.inject({ url: '/api/workspace', headers: headers() })).json();
     expect(after.workspace).toEqual(before.workspace); expect(after.tree).toEqual(before.tree); expect(after.seq).toBe(before.seq); expect(after.main).toBe(before.main);
     expect((await app.inject({ url: '/api/identity', headers: { cookie: otherCookie } })).json().preferences.version).toBe(0);
@@ -66,3 +66,16 @@ it('改密撤销该账号所有会话和凭据，保留其他账号与草稿', a
     cookie = await login('settings-owner', 'new-account-password'); expect((await prefs()).language).toBe('en');
 });
 it('本人密码验证限流', async () => { for (let attempt = 0; attempt < 6; attempt++) { const response = await post('/account/password', { currentPassword: 'wrong-password', newPassword: 'another-password' }); if (attempt === 5) expect(response.statusCode).toBe(429); } });
+it('快捷键随账号保存且旧客户端省略字段时不清空，冲突与非法绑定被拒绝', async () => {
+    const before = await prefs();
+    const other = (await app.inject({ url: '/api/identity', headers: { cookie: otherCookie } })).json().preferences;
+    const saved = await post('/account/preferences', { ...before, shortcuts: { bold: 'Mod+Shift+B', highlight: 'Mod+Alt+H' } });
+    expect(saved.statusCode, saved.body).toBe(200);
+    expect((await prefs()).shortcuts).toEqual({ bold: 'Mod+Shift+B', highlight: 'Mod+Alt+H' });
+    const current = await prefs();
+    expect((await post('/account/preferences', { theme: current.theme, language: current.language, version: current.version })).statusCode).toBe(200);
+    expect((await prefs()).shortcuts).toEqual(current.shortcuts);
+    expect((await post('/account/preferences', { ...await prefs(), shortcuts: { highlight: 'Mod+B' } })).statusCode).toBe(422);
+    expect((await post('/account/preferences', { ...await prefs(), shortcuts: { highlight: 'Mod+W' } })).statusCode).toBe(422);
+    expect((await app.inject({ url: '/api/identity', headers: { cookie: otherCookie } })).json().preferences).toEqual(other);
+});

@@ -1,4 +1,5 @@
 import { applyMutationOperation, prepareMutation } from './mutations.js';
+import { checkPublicationAssets, publishAssets } from './assets.js';
 import { projectState, writableProject } from './projectState.js';
 import { createHmac, randomUUID } from 'node:crypto';
 import { BoundedCache } from './cache.js';
@@ -165,19 +166,43 @@ export class Service {
             this.store.db.prepare('DELETE FROM steps WHERE workspace_id=? AND entity_id=?').run(workspaceId, id);
             return;
         }
-        if (row && row.body.trimEnd() === entity.body.trimEnd()) {
-            const normalized = normalizeEmbeds(this.codec.schema.nodeFromJSON(JSON.parse(row.doc)));
+        let previous;
+        try {
+            previous = row ? this.codec.schema.nodeFromJSON(JSON.parse(row.doc)) : undefined;
+            previous?.check();
+        } catch {
+            previous = undefined;
+        }
+        if (row && previous && row.schema_version === documentSchemaVersion && row.body.trimEnd() === entity.body.trimEnd()) {
+            const normalized = normalizeEmbeds(previous);
             if (normalized.steps.length) this.store.db.transaction(() => this.saveSteps(workspaceId, id, row.version, normalized.steps.map(step => step.toJSON()), 'schema-upgrade', row.body, normalized.doc.toJSON()))();
             return;
         }
-        const next = this.codec.parse(entity.body);
+        let next;
+        try {
+            next = this.codec.parse(entity.body);
+            next.check();
+        } catch (error) {
+            const reason = error instanceof RangeError && /^Expected value of type [\w|]+ for attribute \w+ on type \w+, got (null|undefined)$/.test(error.message) ? error.message : '正文无法转换为富文本';
+            const diagnosticId = randomUUID();
+            console.error({ code: 'DOCUMENT_RENDER_FAILED', diagnosticId, documentId: id, error });
+            return { code: 'DOCUMENT_RENDER_FAILED', reason: reason + ' [' + diagnosticId + ']', diagnosticId, requiredAction: 'edit_markdown', retryable: false };
+        }
         if (!row) {
-            this.store.db.prepare('INSERT INTO documents VALUES (?,?,?,?,?)').run(workspaceId, id, 0, entity.body, JSON.stringify(next.toJSON()));
+            this.store.db.prepare('INSERT INTO documents (workspace_id,entity_id,version,body,doc,schema_version) VALUES (?,?,?,?,?,?)').run(workspaceId, id, 0, entity.body, JSON.stringify(next.toJSON()), documentSchemaVersion);
             return;
         }
-        const previous = this.codec.schema.nodeFromJSON(JSON.parse(row.doc));
-        if (previous.eq(next))
+        if (!previous) {
+            this.store.db.transaction(() => {
+                this.store.db.prepare('UPDATE documents SET version=version+1,body=?,doc=?,schema_version=? WHERE workspace_id=? AND entity_id=?').run(entity.body, JSON.stringify(next.toJSON()), documentSchemaVersion, workspaceId, id);
+                this.store.db.prepare('DELETE FROM steps WHERE workspace_id=? AND entity_id=?').run(workspaceId, id);
+            })();
             return;
+        }
+        if (previous.eq(next)) {
+            this.store.db.prepare('UPDATE documents SET schema_version=? WHERE workspace_id=? AND entity_id=?').run(documentSchemaVersion, workspaceId, id);
+            return;
+        }
         const start = previous.content.findDiffStart(next.content), end = previous.content.findDiffEnd(next.content);
         if (start === null || !end)
             return;
@@ -187,7 +212,7 @@ export class Service {
         this.saveSteps(workspaceId, id, row.version, steps, clientId, entity.body, transform.doc.toJSON());
     }
     saveSteps(workspaceId: string, id: string, version: number, steps: unknown[], clientId: string, body: string, doc: unknown) {
-        this.store.db.prepare('UPDATE documents SET version=?,body=?,doc=? WHERE workspace_id=? AND entity_id=?').run(version + steps.length, body, JSON.stringify(doc), workspaceId, id);
+        this.store.db.prepare('UPDATE documents SET version=?,body=?,doc=?,schema_version=? WHERE workspace_id=? AND entity_id=?').run(version + steps.length, body, JSON.stringify(doc), documentSchemaVersion, workspaceId, id);
         for (let index = 0; index < steps.length; index++)
             this.store.db.prepare('INSERT INTO steps VALUES (?,?,?,?,?)').run(workspaceId, id, version + index, JSON.stringify(steps[index]), clientId);
     }
@@ -196,10 +221,30 @@ export class Service {
 const workspace = this.workspace(actor), entity = this.store.entity(workspace.head, id);
         if (entity?.kind !== 'object')
             throw new Fault(404, '页面不存在');
-        this.syncDocument(workspace.id, id, entity, 'system');
+        const warning = this.syncDocument(workspace.id, id, entity, 'system');
+        if (warning) throw new Fault(422, '富文本解析失败，请使用 Markdown 源码编辑：' + warning.reason, warning);
         const row = this.store.db.prepare('SELECT * FROM documents WHERE workspace_id=? AND entity_id=?').get(workspace.id, id) as any;
         const steps = since === undefined ? [] : this.store.db.prepare('SELECT * FROM steps WHERE workspace_id=? AND entity_id=? AND version>=? ORDER BY version').all(workspace.id, id, since) as any[];
         return { schemaVersion: documentSchemaVersion, version: row.version, doc: JSON.parse(row.doc), body: entity.body, steps: steps.map(step => JSON.parse(step.steps)), clientIds: steps.map(step => step.client_id) };
+    }
+    documentSource(actor: Actor, id: string) {
+        requireScope(actor, 'workspace.read');
+        const entity = this.store.entity(this.workspace(actor).head, id);
+        if (entity?.kind !== 'object') throw new Fault(404, '页面不存在');
+        return { body: entity.body };
+    }
+    saveDocumentSource(actor: Actor, id: string, input: { requestId: string; expected: string; body: string }) {
+        requireScope(actor, 'workspace.write');
+        return this.once(actor, input.requestId, () => {
+            const workspace = this.workspace(actor), tree = this.store.view(workspace.head), entity = tree[id];
+            if (entity?.kind !== 'object') throw new Fault(404, '页面不存在');
+            if (entity.body !== input.expected) throw new Fault(409, '正文已被修改，请对照最新源码后重新保存');
+            entity.body = input.body;
+            const result = this.write(actor, workspace, tree, 'source:' + input.requestId, [id]);
+            const persisted = this.store.entity(result.head, id)!;
+            const warning = this.syncDocument(workspace.id, id, persisted, actor.sessionId);
+            return { ...result, body: persisted.kind === 'object' ? persisted.body : '', warning };
+        });
     }
     textSteps(actor: Actor, id: string, input: {
         requestId: string;
@@ -372,6 +417,7 @@ const workspace = this.workspace(actor), entity = this.store.entity(workspace.he
         if (preview.head !== input.head || preview.main !== input.main) throw new Fault(409, '预览已过期，请刷新');
         if (!preview.diff.length) throw new Fault(400, '没有需要发布的修改');
         if (preview.conflicts.length || preview.diagnostics.length) throw new Fault(409, '请先解决冲突或校验问题', { conflicts: preview.conflicts, diagnostics: preview.diagnostics });
+        checkPublicationAssets(this.store, this.codec, actor, preview.candidate);
         return preview;
     }
     publish(actor: Actor, input: PublicationInput, prepared?: PreparedPublication) {
@@ -400,6 +446,7 @@ const workspace = this.workspace(actor), entity = this.store.entity(workspace.he
             if (row.state === 'done')
                 return;
             this.store.db.prepare('INSERT OR IGNORE INTO revisions VALUES (?,?,?,?,?)').run(row.revision, row.project_id, row.tree, row.old_main, row.created);
+            publishAssets(this.store, this.codec, row.project_id, this.store.tree(row.tree));
             this.store.db.prepare('UPDATE workspaces SET base=?,head=?,version=version+1 WHERE id=?').run(row.revision, row.tree, row.workspace_id);
             this.store.db.prepare("UPDATE publications SET state='done' WHERE id=?").run(id);
             const documents = this.store.db.prepare('SELECT entity_id FROM documents WHERE workspace_id=?').all(row.workspace_id) as { entity_id: string }[];

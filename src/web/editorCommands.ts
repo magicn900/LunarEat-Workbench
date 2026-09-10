@@ -1,4 +1,7 @@
+import { insertMath } from './mathEditing';
 import { t } from './i18n';
+import { ImageController } from './ImageController';
+import { insertMarkdownTable, tableCommand, tableContext } from './tableCommands';
 import { Plugin, TextSelection, NodeSelection, type EditorState } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
 import { toggleMark, setBlockType, wrapIn } from '@milkdown/prose/commands';
@@ -8,6 +11,7 @@ import { normalizeEmbeds, type EmbedTarget } from '../shared/embeds';
 import { locked, stepHistory } from './editing';
 import { getSnapshot, notify } from './state';
 import { editorCommands } from './editorCommandRegistry';
+import { matchesShortcut } from './shortcuts';
 export type Picker = { kind: 'link'|'view'|'doc'|'source'; from: number; to: number; initial: string; label: string; invalid?: boolean };
 export type ToolsState = { editor: EditorState|null; picker: Picker|null; slash: { from: number; to: number; query: string; index: number }|null };
 export class EditorToolsController {
@@ -16,7 +20,8 @@ export class EditorToolsController {
     private dismissed = '';
     private view: EditorView|null = null;
     onCommand = () => {};
-    constructor(readonly documentId: string) {}
+    readonly images: ImageController;
+    constructor(readonly documentId: string) { this.images = new ImageController(documentId, () => this.onCommand()); }
     subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
     snapshot = () => this.state;
     private emit(patch: Partial<ToolsState>) { this.state = { ...this.state, ...patch }; if (this.view) { const command = this.state.slash ? this.slashItems()[this.state.slash.index] : null; if (command) { this.view.dom.setAttribute('aria-controls', 'slash-commands'); this.view.dom.setAttribute('aria-activedescendant', 'slash-command-' + command.id); } else { this.view.dom.removeAttribute('aria-controls'); this.view.dom.removeAttribute('aria-activedescendant'); } } this.listeners.forEach(listener => listener()); }
@@ -46,8 +51,11 @@ export class EditorToolsController {
             return transaction;
         },
         props: { attributes: () => ({ role: 'textbox', 'aria-label': t('正文编辑区'), 'aria-multiline': 'true' }), handleDOMEvents: { compositionend: view => { setTimeout(() => { if (this.view === view) this.refresh(view); }, 0); return false; } }, handleKeyDown: (view, event) => {
-            if (event.isComposing || view.composing || event.keyCode === 229) return false;
-            if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'k') { this.openPicker('link'); return true; }
+            if (event.isComposing || view.composing || event.keyCode === 229 || event.getModifierState('AltGraph')) return false;
+            if (event.key === 'Tab' && tableContext(view.state) && !locked()) { this.runTable(event.shiftKey ? 'cell-previous' : 'cell-next'); return true; }
+            for (const id of ['bold', 'italic', 'highlight', 'strikethrough', 'link', 'table', 'image', 'math-inline', 'math-block'] as const) {
+                if (matchesShortcut(id, event)) { this.run(id); return true; }
+            }
             if (!this.state.slash) return false;
             if (event.key === 'Escape') { this.close(); return true; }
             const items = this.slashItems();
@@ -60,6 +68,29 @@ export class EditorToolsController {
     slashItems() { const query = this.state.slash?.query.toLocaleLowerCase() || ''; return editorCommands.filter(command => (t(command.title) + ' ' + command.words).toLocaleLowerCase().includes(query)); }
     close = () => { const slash = this.state.slash; if (slash) this.dismissed = slash.to + ':/' + slash.query; this.emit({ picker: null, slash: null }); this.view?.focus(); };
     focus = () => this.view?.focus();
+    editorElement = () => this.view?.dom || null;
+    selectTableCell = (cell: HTMLElement) => {
+        if (!this.view || !this.view.dom.contains(cell) || !this.writable()) return false;
+        const position = this.view.posAtDOM(cell, 0);
+        this.view.dispatch(this.view.state.tr.setSelection(TextSelection.near(this.view.state.doc.resolve(position))));
+        return true;
+    };
+    tableElements = () => {
+        if (!this.view) return null;
+        const context = tableContext(this.view.state);
+        if (!context) return null;
+        const element = this.view.nodeDOM(context.tableStart - 1) as HTMLElement | null;
+        const table = element?.matches('table') ? element : element?.querySelector('table');
+        const cellPosition = context.tableStart + context.map.positionAt(context.row, context.column, context.table);
+        const cell = this.view.nodeDOM(cellPosition) as HTMLElement | null;
+        return table && cell ? { table, cell } : null;
+    };
+    runTable = (id: string) => {
+        if (!this.writable()) return;
+        const view = this.view!;
+        tableCommand(id)(view.state, transaction => { this.onCommand(); view.dispatch(transaction.scrollIntoView()); }, view);
+        view.focus();
+    };
     caret = () => { try { return this.view?.coordsAtPos(this.view.state.selection.from) || null; } catch { return null; } };
     private writable() { if (!this.view || locked() || !this.view.editable || this.view.composing) { notify(t("当前不能编辑，请等待输入结束或收回控制权"), true); return false; } return true; }
     openPicker(kind: Picker['kind'], range?: { from: number; to: number }, initial = '') {
@@ -116,13 +147,19 @@ export class EditorToolsController {
         if (id === 'undo' || id === 'redo') { void stepHistory(id, this.documentId); return; }
         if (!this.writable()) return;
         if (id === 'link' || id === 'view' || id === 'doc') { this.openPicker(id); return; }
+        if (id === 'image') {
+            const slash = this.state.slash;
+            if (slash) { this.onCommand(); this.view!.dispatch(this.view!.state.tr.delete(slash.from, slash.to)); this.emit({ slash: null }); }
+            this.images.choose(); return;
+        }
         const view = this.view!;
         const slash = this.state.slash;
         let state = view.state;
         const base = state.tr;
         if (slash) { base.delete(slash.from, slash.to); state = state.apply(base); }
         const schema = state.schema;
-        const command = id === 'bold' || id === 'italic' ? toggleMark(schema.marks[id === 'bold' ? 'strong' : 'emphasis']) : id.startsWith('heading') ? setBlockType(schema.nodes.heading, { level: Number(id.slice(-1)) }) : id === 'bullet_list' || id === 'ordered_list' ? wrapInList(schema.nodes[id]) : id === 'blockquote' ? wrapIn(schema.nodes.blockquote) : id === 'hr' ? null : setBlockType(schema.nodes[id]);
+        const marks: Record<string, string> = { bold: 'strong', italic: 'emphasis', highlight: 'highlight', strikethrough: 'strike_through' };
+        const command = id === 'math-inline' || id === 'math-block' ? insertMath(id === 'math-block') : id === 'table' ? insertMarkdownTable : marks[id] ? toggleMark(schema.marks[marks[id]]) : id.startsWith('heading') ? setBlockType(schema.nodes.heading, { level: Number(id.slice(-1)) }) : id === 'bullet_list' || id === 'ordered_list' ? wrapInList(schema.nodes[id]) : id === 'blockquote' ? wrapIn(schema.nodes.blockquote) : id === 'hr' ? null : setBlockType(schema.nodes[id]);
         let applied = false;
         const dispatch = (transaction: typeof base) => { if (slash) { transaction.steps.forEach(step => base.step(step)); base.setSelection(transaction.selection); } this.onCommand(); this.emit({ slash: null }); view.dispatch((slash ? base : transaction).scrollIntoView()); applied = true; };
         if (id === 'hr') dispatch(state.tr.replaceSelectionWith(schema.nodes.hr.create())); else command?.(state, dispatch, view);

@@ -1,6 +1,6 @@
 :root { --interactive-hover: var(--text-e6eddf); --interactive-pressed: var(--text-dce6d4); --interactive-selected: var(--text-dfead8); --focus-ring: var(--text-507759); }
 .app-shell button { transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease; }
-.app-shell button:not(:disabled):active { box-shadow: inset 0 0 0 1px #50775955; }
+.app-shell button:not(:disabled):active { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--focus-ring) 33%, transparent); }
 .app-shell :is(button, summary, a, input, select, textarea, [tabindex]):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .app-shell :is(input, textarea, select):not(:disabled):not(:read-only):hover, .app-shell select:not(:disabled):hover { border-color: var(--edge-aab9a0); }
 .app-shell :is(input, textarea, select):not(:disabled):focus { border-color: var(--focus-ring); }
@@ -10,7 +10,7 @@
 .sidebar-brand > div { flex: 1; min-width: 0; }
 .sidebar-search.search { display: flex; gap: 5px; border: 1px solid var(--edge-d8e0d1); background: var(--fill-f8faf5); border-radius: 6px; padding: 4px 8px; margin: 0 3px; color: var(--text-74836c); }
 .sidebar-search:hover { border-color: var(--edge-aebda3); background: var(--fill-fffefb); }
-.sidebar-search:focus-within { border-color: var(--focus-ring); box-shadow: 0 0 0 2px #50775922; }
+.sidebar-search:focus-within { border-color: var(--focus-ring); box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 13%, transparent); }
 .sidebar-search.search input { width: 100%; min-width: 0; font-size: 12px; padding: 5px 2px; outline: none; }
 .sidebar-search > svg { flex-shrink: 0; }
 .app-shell .sidebar-search input:focus-visible { outline: none; }
@@ -28,7 +28,7 @@
 .workspace-sidebar button > svg { flex-shrink: 0; }
 .workspace-sidebar .nav-item:not(:disabled):hover, .workspace-sidebar .icon:not(:disabled):hover { background: var(--interactive-hover); color: var(--text-2e5039); }
 .workspace-sidebar .nav-item:not(:disabled):active { background: var(--interactive-pressed); }
-.workspace-sidebar .nav-item.current { background: var(--interactive-selected); color: var(--text-294d34); box-shadow: inset 3px 0 #507759; font-weight: 600; }
+.workspace-sidebar .nav-item.current { background: var(--interactive-selected); color: var(--text-294d34); box-shadow: inset 3px 0 var(--focus-ring); font-weight: 600; }
 .workspace-sidebar .nav-item.current:hover { background: var(--fill-d5e3cc); }
 .workspace-sidebar .directory summary { cursor: pointer; list-style: none; color: var(--text-6f7d64); font-size: 12px; }
 .workspace-sidebar .directory summary:hover { background: var(--interactive-hover); }
@@ -72,11 +72,11 @@
 .collection-panel .section-heading p { color: var(--text-7d8875); font-size: 12px; margin-bottom: 8px; }
 .collection-view-tabs { display: flex; gap: 5px; border-bottom: 1px solid var(--border); margin: 18px 0; padding-bottom: 7px; overflow-x: auto; }
 .collection-view-tabs button { border: 0; background: transparent; white-space: nowrap; }
-.collection-view-tabs button.current { color: var(--accent); background: var(--interactive-selected); box-shadow: inset 0 -2px #507759; }
+.collection-view-tabs button.current { color: var(--accent); background: var(--interactive-selected); box-shadow: inset 0 -2px var(--focus-ring); }
 .collection-grid :is(tbody tr, .record-list article, .record-cards article):hover { background: var(--fill-f5f8f0); }
 .collection-grid :is(tbody tr, .record-list article, .record-cards article):focus-within { background: var(--fill-edf3e6); }
 .collection-grid button.row-title:not(:disabled):hover { background: var(--interactive-hover); text-decoration: underline; text-underline-offset: 3px; }
-.collection-grid .icon.active, .revision-bar .icon[aria-pressed="true"] { background: var(--interactive-selected); color: var(--text-31573c); box-shadow: inset 0 0 0 1px #adc19f; }
+.collection-grid .icon.active, .revision-bar .icon[aria-pressed="true"] { background: var(--interactive-selected); color: var(--text-31573c); box-shadow: inset 0 0 0 1px var(--border-strong); }
 .app-shell :is(.page-meta button, .revision-bar button, .backlink, .activity-list button):not(:disabled):hover { background: var(--interactive-hover); color: var(--text-31573c); }
 .app-shell .import-button:not(:has(input:disabled)):hover { background: var(--interactive-hover); color: var(--text-31573c); }
 .app-shell .import-button:has(input:disabled) { opacity: .45; cursor: not-allowed; }

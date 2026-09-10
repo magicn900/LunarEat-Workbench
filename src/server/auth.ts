@@ -6,7 +6,8 @@ export { Fault } from './fault.js';
 import { effectiveProjectScopes, projectState } from './projectState.js';
 import { defaultPreferences, type Preferences } from '../shared/preferences.js';
 export function accountPreferences(store: Store, userId: string): Preferences {
-    return (store.db.prepare('SELECT theme,language,version FROM account_preferences WHERE user_id=?').get(userId) as Preferences | undefined) || { ...defaultPreferences };
+    const row = store.db.prepare('SELECT theme,language,version,shortcuts FROM account_preferences WHERE user_id=?').get(userId) as (Omit<Preferences, 'shortcuts'> & { shortcuts: string }) | undefined;
+    return row ? { ...row, shortcuts: JSON.parse(row.shortcuts) } : { ...defaultPreferences, shortcuts: {} };
 }
 import { capabilities } from '../shared/permissions.js';
 export { capabilities } from '../shared/permissions.js';

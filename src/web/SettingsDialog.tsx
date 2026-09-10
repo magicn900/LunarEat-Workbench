@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { KeyRound, Monitor, ShieldCheck, Copy, Plus, ChevronDown, Check } from 'lucide-react';
+import { KeyRound, Monitor, ShieldCheck, Copy, Plus, ChevronDown, Check, Keyboard } from 'lucide-react';
+import { KeyboardSettings } from './KeyboardSettings';
 import { Modal } from './Modal';
 import { useAccount } from './accountContext';
 import { api } from './state';
@@ -11,6 +12,7 @@ import { t, useLanguage } from './i18n';
 type Connection = { scopes: string[]; tokens: { id: string; name: string; scopes: string; created: string }[] };
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
     const account = useAccount();
+    const tabs = [['account', t('账号与安全'), ShieldCheck], ['general', t('通用'), Monitor], ['keyboard', t('快捷键'), Keyboard], ['agent', t('Agent 接入'), KeyRound]] as const;
     useLanguage();
     const [tab, setTab] = useState('account'), [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
     const [passwords, setPasswords] = useState({ current: '', next: '', confirm: '' });
@@ -49,7 +51,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         else if (confirmation) { const target = confirmation; void perform(async () => { await api('/tokens/revoke', { id: target.tokenId }, project?.id); setConfirmation(null); await loadConnection(); setNotice(t('凭据已撤销')); }); }
     };
     return <><Modal title={t('设置')} className="settings-dialog" busy={busy || !!confirmation} onClose={close}>
-        <div className="settings-layout"><nav className="settings-tabs" role="tablist" aria-label={t('设置分类')}>{[['account', t("账号与安全"), ShieldCheck], ['general', t("通用"), Monitor], ['agent', t("Agent 接入"), KeyRound]].map(([key, title, Icon]: any) => <button type="button" role="tab" id={'settings-tab-' + key} aria-selected={tab === key} aria-controls={'settings-panel-' + key} tabIndex={tab === key ? 0 : -1} key={key} disabled={busy} onClick={() => { setTab(key); setError(''); setNotice(''); }} onKeyDown={event => { const keys = ['account', 'general', 'agent']; if (['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'Home', 'End'].includes(event.key)) { event.preventDefault(); const next = event.key === 'Home' ? 'account' : event.key === 'End' ? 'agent' : keys[(keys.indexOf(tab) + (['ArrowDown', 'ArrowRight'].includes(event.key) ? 1 : 2)) % 3]; setTab(next); document.getElementById('settings-tab-' + next)?.focus(); } }}><Icon size={17}/><span>{t(title)}</span></button>)}</nav>
+        <div className="settings-layout"><nav className="settings-tabs" role="tablist" aria-label={t('设置分类')}>{tabs.map(([key, title, Icon]: any) => <button type="button" role="tab" id={'settings-tab-' + key} aria-selected={tab === key} aria-controls={'settings-panel-' + key} tabIndex={tab === key ? 0 : -1} key={key} disabled={busy} onClick={() => { setTab(key); setError(''); setNotice(''); }} onKeyDown={event => { const keys: readonly string[] = tabs.map(item => item[0]); if (['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'Home', 'End'].includes(event.key)) { event.preventDefault(); const next = event.key === 'Home' ? 'account' : event.key === 'End' ? 'agent' : keys[(keys.indexOf(tab) + (['ArrowDown', 'ArrowRight'].includes(event.key) ? 1 : keys.length - 1)) % keys.length]; setTab(next); document.getElementById('settings-tab-' + next)?.focus(); } }}><Icon size={17}/><span>{t(title)}</span></button>)}</nav>
         <div className="settings-content">{error && <p role="alert" className="account-error">{error}</p>}{notice && <p role="status" className="settings-notice"><Check size={15}/>{notice}</p>}
             <section hidden={tab !== 'account'} role="tabpanel" id="settings-panel-account" aria-labelledby="settings-tab-account">
                 <h2>{t('账号与安全')}</h2><p className="settings-description">{t('管理你自己的账号，不改变项目内容。')}</p>
@@ -66,6 +68,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 <label className="settings-language">{t('界面语言')}<select aria-label={t('界面语言')} disabled={busy} value={account.preferences.language} onChange={event => void perform(() => account.savePreferences({ ...account.preferences, language: event.target.value as 'zh-CN' | 'en' }))}><option value="zh-CN">{t("简体中文")}</option><option value="en">English</option></select></label><p className="settings-description">{t('只切换界面文字，不翻译策划正文、字段和自定义名称。')}</p>
                 <p className="settings-description" role="status">{busy ? t('正在保存…') : t('选择后自动保存')}</p>
             </section>
+            <section hidden={tab !== 'keyboard'} role="tabpanel" id="settings-panel-keyboard" aria-labelledby="settings-tab-keyboard"><KeyboardSettings/></section>
             <section hidden={tab !== 'agent'} role="tabpanel" id="settings-panel-agent" aria-labelledby="settings-tab-agent">
                 <h2>{t('Agent 接入')}</h2><p className="settings-description">{t('Agent 使用你的身份，只能访问你明确授予的当前项目能力。')}</p>
                 {!project ? <p>{t('加入项目后即可创建 Agent 凭据。')}</p> : <>{loading && !connection ? <p role="status">{t('正在加载…')}</p> : !connection ? <button onClick={() => void loadConnection()}>{t('重试')}</button> : <>

@@ -1,0 +1,20 @@
+.math-node { max-width: 100%; }
+.math-node[data-math="inline"] { display: inline; }
+.math-node[data-math="block"] { display: block; margin: 1em 0; min-height: 2em; }
+.math-node .math-source { display: none; }
+.math-node .math-rendered { display: inline-block; vertical-align: baseline; max-width: 100%; cursor: text; }
+.math-node[data-math="block"] > .math-rendered { display: block; overflow-x: auto; padding: .4em 0; }
+.math-node.math-editing > .math-rendered { display: none; }
+.math-node.math-editing > .math-source { display: inline; font: .92em/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); border-radius: 3px; }
+.math-node.math-editing > .math-source::before, .math-node.math-editing > .math-source::after { content: '$'; color: var(--muted); user-select: none; }
+.math-node[data-math="block"].math-editing > .math-source { display: block; padding: .5em .7em; }
+.math-node[data-math="block"].math-editing > .math-source::before, .math-node[data-math="block"].math-editing > .math-source::after { content: '$$'; display: block; }
+.math-rendered .katex { font-size: 1.08em; }
+.math-rendered.math-error { font-family: ui-monospace, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; text-decoration: underline wavy #c98b39; text-underline-offset: .3em; }
+.math-rendered.math-error::after { content: ' ⚠'; }
+.math-preview { position: fixed; z-index: 95; max-height: min(260px, 35vh); overflow: auto; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface-raised); color: var(--text); box-shadow: 0 8px 28px #0003; }
+.math-preview > small { display: block; color: var(--muted); font-size: 11px; margin-bottom: 8px; }
+.math-preview-content { overflow-x: auto; padding: 4px 0; }
+.math-preview-content.math-error { white-space: pre-wrap; overflow-wrap: anywhere; font-family: ui-monospace, Consolas, monospace; }
+.math-preview-content.math-error::after { content: attr(title); display: block; color: var(--muted); margin-top: 8px; font: 12px/1.5 sans-serif; }
+.math-preview .katex-display { margin: .25em 0; }

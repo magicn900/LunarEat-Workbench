@@ -1,4 +1,5 @@
 import { randomUUID } from './uuid';
+import { TextCell } from './TextCell';
 import { t } from './i18n';
 import { useState, useEffect, useRef, useId } from 'react';
 import { locked, flushEditing, afterEditing, registerBuffer, editingChanged } from './editing';
@@ -47,6 +48,7 @@ export function Cell({ row, field }: { row: DesignObject; field: Field }) {
     useEffect(()=>registerBuffer('cell:'+bufferId,{dirty:()=>state.current.dirty||!!pending.current,flush:async()=>{if(pending.current)await pending.current;else if(state.current.dirty)await save(state.current.value);}}),[bufferId,row.id,field.key]);
     const edit=(raw:string)=>{state.current.value=raw;state.current.dirty=true;setValue(raw);setDirty(true);editingChanged();};
     const label=row.title+' '+field.label;
+    if(['text','multi','reference'].includes(field.type))return <TextCell readOnly={locked()} aria-label={label} value={value} onChange={event=>edit(event.target.value)} onBlur={()=>{if(state.current.dirty)void save(state.current.value).catch(()=>{});}} onKeyDown={event=>{if(event.key==='Enter'&&(field.type!=='text'||event.ctrlKey||event.metaKey)&&!event.nativeEvent.isComposing){event.preventDefault();event.currentTarget.blur();}}} placeholder="—"/>;
     if(field.type==='boolean')return <input disabled={locked()} aria-label={label} type="checkbox" checked={value==='true'} onChange={event=>{edit(String(event.target.checked));void save(String(event.target.checked)).catch(()=>{});}}/>;
     if(field.type==='select')return <select disabled={locked()} aria-label={label} value={value} onChange={event=>{edit(event.target.value);void save(event.target.value).catch(()=>{});}}><option value="">{t("未设置")}</option>{field.options?.map(option=><option key={option}>{option}</option>)}</select>;
     return <input readOnly={locked()} aria-label={label} type={field.type==='number'?'number':field.type==='date'?'date':'text'} value={value} onChange={event=>edit(event.target.value)} onBlur={()=>{if(state.current.dirty)void save(state.current.value).catch(()=>{});}} onKeyDown={event=>{if(event.key==='Enter'&&!event.nativeEvent.isComposing)event.currentTarget.blur();}} placeholder="—"/>;

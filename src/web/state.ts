@@ -44,7 +44,7 @@ export async function api(path: string, body?: unknown, projectId?: string): Pro
     const response = await fetch('/api' + path, { method: body === undefined ? 'GET' : 'POST', headers: { 'content-type': 'application/json', 'x-workbench-client': 'web', ...((projectId || pageProject) ? { 'x-project-id': projectId || pageProject } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
     const result = await response.json();
     if (!response.ok)
-throw Object.assign(new Error(t(result.error)), { status: response.status, details: result.details, code: result.code });
+throw Object.assign(new Error(t(result.error) + (result.requestId ? ' [' + result.requestId + ']' : '')), { status: response.status, details: result.details, code: result.code, requestId: result.requestId });
     if (path === '/logout') window.dispatchEvent(new Event('identity-changed'));
     return result;
 }

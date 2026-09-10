@@ -27,7 +27,7 @@ it('所有草稿写接口受控制权保护，错误明确区分人工收回与�
   ['/api/workspace/operations',{requestId:'human-blocked',operations:mutation.operations}],
   ['/api/workspace/undo',{requestId:'undo-blocked',groupId:'unknown'}],
   ['/api/workspace/history-step',{requestId:'redo-blocked',direction:'redo'}],
-  ['/api/documents/overview/steps',{requestId:'steps-blocked',version:0,steps:[{}],clientId:'web',groupId:'web'}],
+  ['/api/documents/overview/steps',{requestId:'steps-blocked',schemaVersion:4,version:0,steps:[{}],clientId:'web',groupId:'web'}],
   ['/api/publish',{requestId:'publish-blocked',head:snapshot.workspace.head,main:snapshot.main,title:'不可发布'}],
   ['/api/workspace/refresh',{requestId:'refresh-blocked',head:snapshot.workspace.head,main:snapshot.main}],
   ['/api/workspace/discard',{requestId:'discard-blocked',head:snapshot.workspace.head,base:snapshot.workspace.base,main:snapshot.main,targets:[{id:'frost'}]}],

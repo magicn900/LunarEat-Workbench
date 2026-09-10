@@ -1,7 +1,11 @@
 import { t } from './i18n';
+import { TableTools } from './TableTools';
+import { ImageTools } from './ImageTools';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { Bold, Italic, Link2, Boxes, FileText, Undo2, Redo2, X, Search } from 'lucide-react';
+import { Bold, Italic, Highlighter, Strikethrough, Link2, Boxes, FileText, Undo2, Redo2, X, Search } from 'lucide-react';
+import { shortcutLabel, useShortcuts } from './shortcuts';
+import type { ShortcutId } from '../shared/shortcuts';
 import { EditorToolsController, type Picker } from './editorCommands';
 import { locked } from './editing';
 import { useSnapshot } from './state';
@@ -31,6 +35,8 @@ function InsertPicker({ controller, picker }: { controller: EditorToolsControlle
 }
 export function EditorTools({ controller }: { controller: EditorToolsController }) {
     useSnapshot();
+    useShortcuts();
+    const hint = (id: ShortcutId, label: string) => label + (shortcutLabel(id) ? ' · ' + shortcutLabel(id) : '');
     const state = useSyncExternalStore(controller.subscribe, controller.snapshot);
     const [, reposition] = useState(0);
     useEffect(() => { if (!state.slash) return; const move = () => reposition(value => value + 1); window.addEventListener('scroll', move, true); window.addEventListener('resize', move); return () => { window.removeEventListener('scroll', move, true); window.removeEventListener('resize', move); }; }, [!!state.slash]);
@@ -42,13 +48,13 @@ export function EditorTools({ controller }: { controller: EditorToolsController 
     const items = controller.slashItems();
     useEffect(() => { if (state.slash) document.getElementById('slash-command-' + items[state.slash.index]?.id)?.scrollIntoView({ block: 'nearest' }); }, [state.slash?.index, state.slash?.query]);
     return <><div className="editor-toolbar" role="toolbar" aria-label={t("正文编辑栏")} data-history-scope={controller.documentId}>
-        {[['undo', t("撤销正文修改"), Undo2], ['redo', t("重做正文修改"), Redo2]].map(([id, title, Icon]: any) => <button key={id} aria-label={t(title)} title={t(title)} disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => controller.run(id)}><Icon size={16}/></button>)}
+        {[['undo', t("撤销正文修改"), Undo2], ['redo', t("重做正文修改"), Redo2]].map(([id, title, Icon]: any) => <button key={id} aria-label={t(title)} title={hint(id, t(title))} disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => controller.run(id)}><Icon size={16}/></button>)}
         <span className="toolbar-divider"/>
         <select aria-label={t("段落格式")} disabled={disabled} value={selectedFormat} onChange={event => controller.run(event.target.value)}><option value="paragraph">{t("正文")}</option><option value="heading1">{t("一级标题")}</option><option value="heading2">{t("二级标题")}</option><option value="heading3">{t("三级标题")}</option><option value="code_block">{t("代码块")}</option></select>
-        {[['bold', t("加粗"), Bold, 'strong'], ['italic', t("斜体"), Italic, 'emphasis']].map(([id, title, Icon, mark]: any) => <button key={id} title={t(title)} aria-label={t(title)} aria-pressed={marks.some(item => item.type.name === mark)} disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => controller.run(id)}><Icon size={16}/></button>)}
-        <select aria-label={t("更多正文格式")} disabled={disabled} value="" onChange={event => controller.run(event.target.value)}><option value="" disabled>{t("列表与更多")}</option><option value="bullet_list">{t("无序列表")}</option><option value="ordered_list">{t("有序列表")}</option><option value="blockquote">{t("引用")}</option><option value="hr">{t("分隔线")}</option></select>
+        {[['bold', t("加粗"), Bold, 'strong'], ['italic', t("斜体"), Italic, 'emphasis'], ['highlight', t("高亮"), Highlighter, 'highlight'], ['strikethrough', t("删除线"), Strikethrough, 'strike_through']].map(([id, title, Icon, mark]: any) => <button key={id} title={hint(id, t(title))} aria-label={t(title)} aria-pressed={marks.some(item => item.type.name === mark)} disabled={disabled} onMouseDown={event => event.preventDefault()} onClick={() => controller.run(id)}><Icon size={16}/></button>)}
+        <select aria-label={t("插入")} disabled={disabled} value="" onChange={event => controller.run(event.target.value)}><option value="" disabled>{t("插入")}</option><option value="bullet_list">{t("无序列表")}</option><option value="ordered_list">{t("有序列表")}</option><option value="blockquote">{t("引用")}</option><option value="hr">{t("分隔线")}</option><option value="table">{t("表格")}</option><option value="image">{t("图片")}</option><option value="math-inline">{t("行内公式")}</option><option value="math-block">{t("独立公式")}</option></select>
         <span className="toolbar-divider"/>
-        {[['link', t("链接"), Link2], ['view', t("嵌入视图"), Boxes], ['doc', t("嵌入文档"), FileText]].map(([id, title, Icon]: any) => <button key={id} disabled={disabled} title={title + (id === 'link' ? ' · Ctrl+Shift+K' : t(" · 输入 / 快捷插入"))} onMouseDown={event => event.preventDefault()} onClick={() => controller.run(id)}><Icon size={15}/><span>{t(title)}</span></button>)}
+        {[['link', t("链接"), Link2], ['view', t("嵌入视图"), Boxes], ['doc', t("嵌入文档"), FileText]].map(([id, title, Icon]: any) => <button key={id} disabled={disabled} title={id === 'link' ? hint('link', title) : title + t(" · 输入 / 快捷插入")} onMouseDown={event => event.preventDefault()} onClick={() => controller.run(id)}><Icon size={15}/><span>{t(title)}</span></button>)}
         <small>{t("输入 / 快捷插入")}</small>
-    </div>{state.slash && rect && createPortal(<div id="slash-commands" className="slash-menu" role="listbox" aria-label={t("斜杠命令")} style={{ left: Math.max(8, Math.min(rect.left, window.innerWidth - 296)), top: Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 330)) }}>{items.map((command, index) => <button id={'slash-command-' + command.id} key={command.id} role="option" aria-selected={index === state.slash!.index} onMouseDown={event => event.preventDefault()} onClick={() => controller.run(command.id)}><span>{t(command.title)}</span><small>{t(command.group)}</small></button>)}{!items.length && <p className="empty">{t("没有匹配命令 · Esc 关闭")}</p>}<footer>{t("↑↓ 选择 · Enter 插入 · Esc 关闭")}</footer></div>, document.body)}{state.picker && <InsertPicker controller={controller} picker={state.picker}/>}</>;
+    </div><TableTools controller={controller} editor={state.editor}/><ImageTools controller={controller.images}/>{state.slash && rect && createPortal(<div id="slash-commands" className="slash-menu" role="listbox" aria-label={t("斜杠命令")} style={{ left: Math.max(8, Math.min(rect.left, window.innerWidth - 296)), top: Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 330)) }}>{items.map((command, index) => <button id={'slash-command-' + command.id} key={command.id} role="option" aria-selected={index === state.slash!.index} onMouseDown={event => event.preventDefault()} onClick={() => controller.run(command.id)}><span>{t(command.title)}</span><small>{t(command.group)}</small></button>)}{!items.length && <p className="empty">{t("没有匹配命令 · Esc 关闭")}</p>}<footer>{t("↑↓ 选择 · Enter 插入 · Esc 关闭")}</footer></div>, document.body)}{state.picker && <InsertPicker controller={controller} picker={state.picker}/>}</>;
 }

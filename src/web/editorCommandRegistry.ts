@@ -1,4 +1,8 @@
 export const editorCommands = [
+    { id: 'math-inline', title: '行内公式', words: 'latex math equation 行内 公式 数学', group: '插入' },
+    { id: 'math-block', title: '独立公式', words: 'latex math equation block 独立 公式 数学', group: '插入' },
+    { id: 'image', title: '插入图片', words: 'image picture photo 图片 截图', group: '插入' },
+    { id: 'table', title: '插入 Markdown 表格', words: 'markdown table 表格 三线表', group: '插入' },
     { id: 'link', title: '插入链接', words: 'link 链接', group: '插入' },
     { id: 'view', title: '嵌入集合视图', words: 'view table 视图 表格 集合', group: '插入' },
     { id: 'doc', title: '嵌入文档', words: 'embed document 文档 页面', group: '插入' },
@@ -12,4 +16,3 @@ export const editorCommands = [
     { id: 'code_block', title: '代码块', words: 'code 代码块', group: '格式' },
     { id: 'hr', title: '分隔线', words: 'divider horizontal 分隔线', group: '格式' }
 ] as const;
-

@@ -12,7 +12,9 @@ for (const viewport of [{ width: 1920, height: 1080 }, { width: 390, height: 844
         const editor = page.locator('.milkdown .editor'); await expect(editor).toContainText('验证段落 30');
         const toolbarBounds = (await toolbar.boundingBox())!;
         const revisionBounds = (await page.locator('.revision-bar').boundingBox())!;
-        expect(toolbarBounds.y).toBeCloseTo(revisionBounds.y + revisionBounds.height, 0);
+        const sourceBounds = (await page.locator('.document-source-switch').boundingBox())!;
+        expect(sourceBounds.y).toBeCloseTo(revisionBounds.y + revisionBounds.height, 0);
+        expect(toolbarBounds.y).toBeCloseTo(sourceBounds.y + sourceBounds.height, 0);
         const heading = page.locator('.page-heading'); const headingTop = (await heading.boundingBox())!.y;
         expect(headingTop).toBeGreaterThanOrEqual(toolbarBounds.y + toolbarBounds.height);
         const inspector = page.locator('.inspector');

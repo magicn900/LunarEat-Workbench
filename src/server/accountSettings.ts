@@ -3,17 +3,21 @@ import { z } from 'zod';
 import type { Store } from './store.js';
 import { accountPreferences, checkPassword, Fault, passwordHash } from './auth.js';
 import { audit, identity } from './administration.js';
+import { shortcutIssues, type ShortcutOverrides } from '../shared/shortcuts.js';
 
 export function registerAccountSettings(app: FastifyInstance, store: Store) {
     const attempts = new Map<string, { count: number; until: number }>();
     app.post('/api/account/preferences', async request => {
         const current = identity(store, request);
-        const input = z.object({ theme: z.enum(['light', 'dark', 'system']), language: z.enum(['zh-CN', 'en']), version: z.number().int().nonnegative() }).strict().parse(request.body);
+        const input = z.object({ theme: z.enum(['light', 'dark', 'system']), language: z.enum(['zh-CN', 'en']), version: z.number().int().nonnegative(), shortcuts: z.record(z.string().max(50), z.string().max(40).nullable()).optional() }).strict().parse(request.body);
         return store.db.transaction(() => {
             const before = accountPreferences(store, current.id);
             if (input.version !== before.version) throw new Fault(409, '设置已在其他页面更新，请重新加载后再修改');
-            const next = { ...input, version: before.version + 1 };
-            store.db.prepare('INSERT INTO account_preferences VALUES (?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET theme=excluded.theme,language=excluded.language,version=excluded.version').run(current.id, next.theme, next.language, next.version);
+            const shortcuts = (input.shortcuts ?? before.shortcuts ?? {}) as ShortcutOverrides;
+            const issues = shortcutIssues(shortcuts);
+            if (issues.length) throw new Fault(422, issues.join('；'));
+            const next = { ...input, shortcuts, version: before.version + 1 };
+            store.db.prepare('INSERT INTO account_preferences (user_id,theme,language,version,shortcuts) VALUES (?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET theme=excluded.theme,language=excluded.language,version=excluded.version,shortcuts=excluded.shortcuts').run(current.id, next.theme, next.language, next.version, JSON.stringify(shortcuts));
             return next;
         })();
     });

@@ -1,0 +1,6 @@
+.document-source-switch { display: flex; justify-content: flex-end; padding: .3rem 1rem; }
+.markdown-source { padding: 1rem 2rem 3rem; }
+.markdown-source > textarea { display: block; width: 100%; min-height: 55vh; resize: vertical; font: 14px/1.7 ui-monospace, Consolas, monospace; tab-size: 4; }
+.markdown-source details textarea { width: 100%; min-height: 10rem; }
+.markdown-source > div { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+.markdown-source [role="alert"] { white-space: pre-wrap; overflow-wrap: anywhere; }

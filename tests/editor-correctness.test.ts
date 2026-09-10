@@ -10,6 +10,8 @@ import { Cell } from '../src/web/CollectionView';
 import { DirectoryTree } from '../src/web/DirectoryTree';
 import type { DesignObject } from '../src/shared/model';
 Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+Object.defineProperty(document, 'fonts', { configurable: true, value: { ready: Promise.resolve() } });
 let container:HTMLDivElement,root:ReturnType<typeof createRoot>;
 function mount(element:ReturnType<typeof createElement>){container=document.createElement('div');document.body.append(container);root=createRoot(container);act(()=>root.render(element));}
 afterEach(()=>{if(root)act(()=>root.unmount());container?.remove();mocks.apply.mockReset();});
@@ -22,8 +24,8 @@ it('保存中新增输入必须继续提交，不被旧响应覆盖',async()=>{
  let release!:()=>void;
  mocks.apply.mockImplementationOnce(()=>new Promise<void>(resolve=>{release=resolve;})).mockResolvedValue(undefined);
  mount(createElement(Cell,{row,field:{key:'description',label:'说明',type:'text',required:false}}));
- const input=container.querySelector('input')!;
- const type=(value:string)=>act(()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));});
+ const input=container.querySelector('textarea')!;
+ const type=(value:string)=>act(()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));});
  type('first');act(()=>input.dispatchEvent(new FocusEvent('focusout',{bubbles:true})));
  expect(mocks.apply).toHaveBeenCalledTimes(1);
  type('second');await act(async()=>{release();});
@@ -31,4 +33,3 @@ it('保存中新增输入必须继续提交，不被旧响应覆盖',async()=>{
  expect(mocks.apply).toHaveBeenCalledTimes(2);
  expect(mocks.apply.mock.calls[1][0][0]).toMatchObject({expected:'first',value:'second'});
 });
-

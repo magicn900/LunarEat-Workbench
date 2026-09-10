@@ -119,7 +119,7 @@ it('旧协作缓存增量升级且不改变草稿或创建历史', () => {
  const legacy=JSON.stringify(current.doc).replace(/\{\"type\":\"workbench_embed\",\"attrs\":\{\"kind\":\"view\",\"target\":\"skills-table\"\}\}/,JSON.stringify({type:'paragraph',content:[{type:'text',text:':::view[skills-table]'}]}));
  expect(legacy).not.toBe(JSON.stringify(current.doc));
  store.db.prepare('UPDATE documents SET doc=? WHERE workspace_id=? AND entity_id=?').run(legacy,snapshot.workspace.id,'overview');
- const next=service.document(designer,'overview',current.version); expect(next.version).toBeGreaterThan(current.version); expect(next.schemaVersion).toBe(2);
+ const next=service.document(designer,'overview',current.version); expect(next.version).toBeGreaterThan(current.version); expect(next.schemaVersion).toBe(4);
  expect(service.snapshot(designer).workspace.head).toBe(snapshot.workspace.head);
  expect(service.document(designer,'overview').version).toBe(next.version);
 });

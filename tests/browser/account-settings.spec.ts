@@ -38,7 +38,7 @@ test('浮窗不替换正文，分页保留表单，关闭未提交输入需要�
 });
 test('主题与语言贯穿编辑界面，刷新保留偏好且正文和版本不变', async ({ page }) => {
     const before = await (await page.request.get('/api/workspace')).json();
-    const documentText = () => page.locator('.ProseMirror').first().evaluate(element => { const clone = element.cloneNode(true) as HTMLElement; clone.querySelectorAll('[role=region]').forEach(region => region.remove()); return clone.textContent; });
+    const documentText = () => page.locator('.ProseMirror').first().evaluate(element => { const clone = element.cloneNode(true) as HTMLElement; clone.querySelectorAll('.embedded-host, [role=region]').forEach(region => region.remove()); return clone.textContent; });
     const body = await documentText();
     await openSettings(page); await page.getByRole('tab', { name: '通用', exact: true }).click();
     await page.screenshot({ path: '.local-data/settings-light.png', fullPage: true });

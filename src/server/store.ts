@@ -21,6 +21,7 @@ export class Store {
         this.db = new Database(join(this.root, 'state.sqlite'));
         this.db.pragma('journal_mode = WAL');
         this.db.pragma('foreign_keys = ON');
+        this.db.exec('CREATE TABLE IF NOT EXISTS image_assets(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,user_id TEXT NOT NULL,hash TEXT NOT NULL,mime TEXT NOT NULL,extension TEXT NOT NULL,name TEXT NOT NULL,size INTEGER NOT NULL,width INTEGER NOT NULL,height INTEGER NOT NULL,published INTEGER NOT NULL DEFAULT 0,created TEXT NOT NULL); CREATE UNIQUE INDEX IF NOT EXISTS image_assets_owner_hash ON image_assets(project_id,user_id,hash);');
         this.db.pragma('synchronous = FULL');
         this.db.exec([
             'CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY,username TEXT UNIQUE NOT NULL,password TEXT NOT NULL);',
@@ -40,6 +41,8 @@ export class Store {
             'CREATE TABLE IF NOT EXISTS documents(workspace_id TEXT NOT NULL,entity_id TEXT NOT NULL,version INTEGER NOT NULL,body TEXT NOT NULL,doc TEXT NOT NULL,PRIMARY KEY(workspace_id,entity_id));',
             'CREATE TABLE IF NOT EXISTS steps(workspace_id TEXT NOT NULL,entity_id TEXT NOT NULL,version INTEGER NOT NULL,steps TEXT NOT NULL,client_id TEXT NOT NULL,PRIMARY KEY(workspace_id,entity_id,version));'
         ].join('\n'));
+        const documentColumns = this.db.prepare('PRAGMA table_info(documents)').all() as { name: string }[];
+        if (!documentColumns.some(column => column.name === 'schema_version')) this.db.exec('ALTER TABLE documents ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 2');
         this.db.exec([
             'CREATE TABLE IF NOT EXISTS project_lifecycle(project_id TEXT PRIMARY KEY REFERENCES projects(id),archived INTEGER NOT NULL DEFAULT 0,deleted INTEGER NOT NULL DEFAULT 0,version INTEGER NOT NULL DEFAULT 0);',
             'CREATE TABLE IF NOT EXISTS deleted_accounts(user_id TEXT PRIMARY KEY REFERENCES users(id),created TEXT NOT NULL);',
@@ -48,6 +51,8 @@ export class Store {
             'CREATE TABLE IF NOT EXISTS member_permissions(user_id TEXT NOT NULL,project_id TEXT NOT NULL,scopes TEXT NOT NULL,PRIMARY KEY(user_id,project_id),FOREIGN KEY(user_id,project_id) REFERENCES members(user_id,project_id));',
             'CREATE TABLE IF NOT EXISTS admin_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,actor TEXT NOT NULL,action TEXT NOT NULL,target TEXT NOT NULL,details TEXT NOT NULL,created TEXT NOT NULL);'
         ].join('\n'));
+        const preferenceColumns = this.db.prepare('PRAGMA table_info(account_preferences)').all() as { name: string }[];
+        if (!preferenceColumns.some(column => column.name === 'shortcuts')) this.db.exec("ALTER TABLE account_preferences ADD COLUMN shortcuts TEXT NOT NULL DEFAULT '{}'");
         this.db.exec('CREATE INDEX IF NOT EXISTS events_project_sequence ON events(project_id,seq); CREATE INDEX IF NOT EXISTS operations_workspace_group ON operations(workspace_id,group_id); CREATE INDEX IF NOT EXISTS publications_project ON publications(project_id,state); CREATE INDEX IF NOT EXISTS confirmations_publication ON confirmations(publication_id);');
     }
     hash(value: string) { return createHash('sha256').update(value).digest('hex'); }

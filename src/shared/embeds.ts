@@ -1,7 +1,7 @@
 import { $nodeSchema, $remark } from '@milkdown/utils';
 import type { Node } from '@milkdown/prose/model';
 import { Transform } from '@milkdown/prose/transform';
-export const documentSchemaVersion = 2;
+export const documentSchemaVersion = 4;
 import { parseEmbed, type EmbedTarget } from './markdownReferences.js';
 export { parseEmbed, type EmbedTarget } from './markdownReferences.js';
 export function embedText(attrs: EmbedTarget) { const text = ':::' + attrs.kind + '[' + attrs.target + ']'; if (!parseEmbed(text)) throw Error('嵌入目标不合法'); return text; }

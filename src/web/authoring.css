@@ -7,6 +7,10 @@
 .editor-toolbar button:not(:disabled):hover { background:var(--interactive-hover); }
 .editor-toolbar button[aria-pressed="true"] { color:var(--accent); background:var(--interactive-selected); box-shadow:inset 0 -2px var(--accent); }
 .editor-toolbar select { font-size:12px; padding:6px; background:transparent; }
+.milkdown .editor mark, .document-embed mark { background:#f6df83; color:#302811; border-radius:2px; }
+:root[data-theme="dark"] .milkdown .editor mark, :root[data-theme="dark"] .document-embed mark { background:#685420; color:#fff3c4; }
+select option, select optgroup { background:var(--surface-raised); color:var(--text); }
+select option:disabled { color:var(--muted); }
 .editor-toolbar small { color:var(--text-84917d); margin-left:auto; font-size:10px; }
 .toolbar-divider { height:20px; width:1px; background:var(--border); margin-inline:3px; }
 .slash-menu { position:fixed; z-index:1100; width:288px; max-height:320px; overflow-y:auto; background:var(--fill-fffefa); border:1px solid var(--edge-cfdbc5); border-radius:8px; box-shadow:0 12px 35px #22372330; padding:5px; }

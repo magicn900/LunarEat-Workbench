@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { registerAssetRoutes } from './assetRoutes.js';
 import cookie from '@fastify/cookie';
 import websocket from '@fastify/websocket';
 import staticFiles from '@fastify/static';
@@ -6,6 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
+import { documentSchemaVersion } from '../shared/embeds.js';
 import { actorFor, checkPassword, Fault, issueToken, capabilities } from './auth.js';
 import type { Service, Operation } from './service.js';
 import { entitySchema, serialize, type Actor } from '../shared/model.js';
@@ -34,9 +36,12 @@ export async function createApp(service: Service, webRoot = 'dist') {
         until: number;
     }>();
     const actor = (request: any): Actor => actorFor(store, request.headers.authorization?.replace(/^Bearer /, '') || request.cookies.session || '', !!request.headers.authorization, request.headers['x-project-id'] || (request.url.startsWith('/events?') ? (request.query as any).projectId : undefined));
-    app.setErrorHandler((error: any, _request, reply) => { if (error instanceof z.ZodError)
-        return reply.code(400).send({ error: '请求格式不合法', code: 'INVALID_INPUT', requiredAction: 'read_command_schema', retryable: false, details: error.issues.slice(0, 20) }); reply.code(error.status || error.statusCode || 500).send({ error: error.status || error.statusCode ? error.message : '服务端错误', details: error.details, code: error.details?.code, retryable: error.details?.retryable, requiredAction: error.details?.requiredAction }); if (!error.status && !error.statusCode)
-        console.error(error); });
+    app.setErrorHandler((error: any, request, reply) => {
+        if (error instanceof z.ZodError) return reply.code(400).send({ error: '请求格式不合法', code: 'INVALID_INPUT', requiredAction: 'read_command_schema', retryable: false, details: error.issues.slice(0, 20) });
+        const status = error.status || error.statusCode || 500;
+        if (status >= 500) console.error({ requestId: request.id, error });
+        reply.code(status).send({ error: status >= 500 ? '服务端处理失败，请保留输入并提供请求编号排查' : error.message, requestId: request.id, details: status >= 500 ? undefined : error.details, code: error.details?.code || (status >= 500 ? 'INTERNAL_ERROR' : undefined), retryable: error.details?.retryable, requiredAction: error.details?.requiredAction });
+    });
     registerAgentKit(app);
     registerAgentCollaboration(app, service, actor);
     app.addHook('onRequest', async (request) => {
@@ -74,6 +79,7 @@ export async function createApp(service: Service, webRoot = 'dist') {
     app.get('/api/workspace', async request => service.snapshot(actor(request), z.object({ since: z.string().max(200).optional() }).parse(request.query).since));
     registerAdministration(app, store);
     registerLifecycle(app, store);
+    registerAssetRoutes(app, service);
     registerAccountSettings(app, store);
     app.get('/api/search', async (request) => service.search(actor(request), z.object({ q: z.string().default('') }).parse(request.query).q));
     app.post('/api/workspace/import-preview', async (request) => { const current = actor(request); requireScope(current, 'workspace.read'); const entity = entitySchema.parse(request.body); const before = serialize(entity); if (entity.kind === 'object')
@@ -101,7 +107,9 @@ export async function createApp(service: Service, webRoot = 'dist') {
         return service.control.presence(current,service.workspace(current).id,input);
     });
     app.get('/api/documents/:id', async (request) => { const { id } = z.object({ id: z.string() }).parse(request.params); const { since } = z.object({ since: z.coerce.number().int().nonnegative().optional() }).parse(request.query); return service.document(actor(request), id, since); });
-    app.post('/api/documents/:id/steps', async (request) => { const { id } = z.object({ id: z.string() }).parse(request.params); const input = z.object({ requestId, version: z.number().int().nonnegative(), steps: z.array(z.unknown()).min(1).max(2000), clientId: z.string().min(1), groupId: z.string().min(1) }).parse(request.body); return controlled(request,current => service.textSteps(current, id, input)); });
+    app.get('/api/documents/:id/source', async (request) => { const { id } = z.object({ id: z.string() }).parse(request.params); return service.documentSource(actor(request), id); });
+    app.post('/api/documents/:id/source', async (request) => { const { id } = z.object({ id: z.string() }).parse(request.params); const input = z.object({ requestId, expected: z.string(), body: z.string() }).parse(request.body); return controlled(request, current => service.saveDocumentSource(current, id, input)); });
+    app.post('/api/documents/:id/steps', async (request) => { const { id } = z.object({ id: z.string() }).parse(request.params); const input = z.object({ requestId, schemaVersion: z.number().optional(), version: z.number().int().nonnegative(), steps: z.array(z.unknown()).min(1).max(2000), clientId: z.string().min(1), groupId: z.string().min(1) }).parse(request.body); if (input.schemaVersion !== documentSchemaVersion) throw new Fault(409, '编辑器协议已更新，请保留输入并刷新页面', { code: 'DOCUMENT_SCHEMA_CHANGED' }); return controlled(request,current => service.textSteps(current, id, input)); });
     app.post('/api/workspace/operations', async (request) => { const input = z.object({ requestId, groupId: z.string().optional(), operations: z.array(z.record(z.string(), z.unknown())).min(1).max(500) }).parse(request.body); return controlled(request,current => service.mutate(current, input.requestId, input.operations as Operation[], input.groupId)); });
     app.post('/api/workspace/undo', async (request) => { const input = z.object({ requestId, groupId: z.string() }).parse(request.body); return controlled(request,current => service.undo(current, input.requestId, input.groupId)); });
     app.get('/api/publish/preview', async (request) => service.preview(actor(request)));

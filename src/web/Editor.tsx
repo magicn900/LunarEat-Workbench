@@ -1,14 +1,20 @@
+import { mathRemark, mathSchemas } from '../shared/math';
+import { mathEditingPlugin } from './mathEditing';
 import { randomUUID } from './uuid';
 import { t } from './i18n';
-import { useEffect, useRef, useState, useMemo, type ReactNode } from 'react';
+import { Component, useCallback, useEffect, useRef, useState, useMemo, type ReactNode } from 'react';
+import { MarkdownEditor } from './MarkdownEditor';
+import './markdown-source.css';
 import { EditorTools } from './EditorTools';
 import { EditorToolsController } from './editorCommands';
 import { createEmbedNodeView } from './EmbeddedBlock';
 import { embedSchema, embedRemark, documentSchemaVersion } from '../shared/embeds';
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx, serializerCtx, parserCtx, schemaCtx } from '@milkdown/core';
-import { commonmark } from '@milkdown/preset-commonmark';
-import { gfm } from '@milkdown/preset-gfm';
-import { locked, registerBuffer, editingChanged } from './editing';
+import { commonmark, strongKeymap, emphasisKeymap } from '@milkdown/preset-commonmark';
+import { gfm, strikethroughKeymap } from '@milkdown/preset-gfm';
+import { highlightRemark, highlightSchema } from '../shared/highlight';
+import type { MilkdownPlugin } from '@milkdown/ctx';
+import { locked, registerBuffer, editingChanged, flushEditing } from './editing';
 import { $prose } from '@milkdown/utils';
 import { Plugin, TextSelection } from '@milkdown/prose/state';
 
@@ -17,10 +23,26 @@ import { collab, sendableSteps, getVersion, receiveTransaction } from 'prosemirr
 import { api, getSnapshot, subscribe, notify, navigate } from './state';
 
 
-export function DocumentEditor({ id, onStatus, heading }: {
+class DocumentBoundary extends Component<{ children: ReactNode; onFailure: (reason: string) => void }, { failed: boolean }> {
+    state = { failed: false };
+    static getDerivedStateFromError() { return { failed: true }; }
+    componentDidCatch(error: Error) { this.props.onFailure(error.message); }
+    render() { return this.state.failed ? null : this.props.children; }
+}
+export function DocumentEditor(props: { id: string; onStatus: (status: string) => void; heading: ReactNode }) {
+    return <RecoverableDocument key={props.id} {...props}/>;
+}
+function RecoverableDocument(props: { id: string; onStatus: (status: string) => void; heading: ReactNode }) {
+    const [source, setSource] = useState(false), [reason, setReason] = useState('');
+    const failed = useCallback((message: string) => { setReason(message); setSource(true); }, []);
+    if (source) return <div className="document-surface"><div className="document-scroll">{props.heading}<MarkdownEditor id={props.id} reason={reason} onClose={() => { setReason(''); setSource(false); }}/></div></div>;
+    return <><div className="document-source-switch"><button onClick={() => void flushEditing().then(() => setSource(true)).catch((error: Error) => notify(error.message, true))}>{t('编辑 Markdown 源码')}</button></div><DocumentBoundary onFailure={failed}><RichDocumentEditor {...props} onFailure={failed}/></DocumentBoundary></>;
+}
+function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
     id: string;
     onStatus: (status: string) => void;
     heading: ReactNode;
+    onFailure: (reason: string) => void;
 }) {
     const host = useRef<HTMLDivElement>(null);
     const tools = useMemo(() => new EditorToolsController(id), [id]);
@@ -39,8 +61,10 @@ export function DocumentEditor({ id, onStatus, heading }: {
         const saved = localStorage.getItem(recoveryKey);
         if (saved)
             setRecovery(saved);
-        const keep = () => { if (editor)
-            editor.action(ctx => { const text = ctx.get(serializerCtx)(ctx.get(editorViewCtx).state.doc); localStorage.setItem(recoveryKey, text); }); };
+        const keep = () => { if (editor) try {
+            editor.action(ctx => { const text = ctx.get(serializerCtx)(ctx.get(editorViewCtx).state.doc); localStorage.setItem(recoveryKey, text); });
+        } catch { onStatusRef.current('无法生成恢复副本，请保留当前页面'); } };
+        const fallback = (error: any) => { if (disposed) return; blocked = true; keep(); onStatusRef.current('已切换 Markdown 源码'); onFailure(error.message || '富文本不可用'); };
         const consume = (remote: any) => {
             if (remote.schemaVersion !== documentSchemaVersion) { blocked = true; keep(); notify(t("编辑器协议已更新，请保存恢复副本并刷新页面"), true); return; }
             if (!editor || disposed || editor.action(ctx => ctx.get(editorViewCtx).composing))
@@ -53,7 +77,7 @@ export function DocumentEditor({ id, onStatus, heading }: {
                 if (remote.steps.length !== remote.version - version) {
                     keep();
                     setRecovery(localStorage.getItem(recoveryKey) || '');
-                    onStatusRef.current('需要恢复');
+                    fallback(new Error('文档富文本状态已重建，请对照源码与本机副本'));
                     return;
                 }
                 if (remote.clientIds.some((remoteId: string) => remoteId !== clientId)) splitGroup = true;
@@ -72,7 +96,8 @@ export function DocumentEditor({ id, onStatus, heading }: {
             consume(await api('/documents/' + id + '?since=' + version));
         }
         catch (error: any) {
-            onStatusRef.current(error.status === 404 ? '页面已删除' : '连接中断');
+            if (error.code === 'DOCUMENT_RENDER_FAILED' || error.status >= 500 || error instanceof RangeError) fallback(error);
+            else onStatusRef.current(error.message || '连接中断');
         }
         finally {
             pulling = false;
@@ -97,12 +122,13 @@ export function DocumentEditor({ id, onStatus, heading }: {
                 lastBatch=Date.now(); splitGroup=false;
             }
             try {
-                const result = await api('/documents/' + id + '/steps', { requestId: batchRequestId, version: pending.version, steps: pending.steps.map(step => step.toJSON()), clientId, groupId });
+                const result = await api('/documents/' + id + '/steps', { requestId: batchRequestId, schemaVersion: documentSchemaVersion, version: pending.version, steps: pending.steps.map(step => step.toJSON()), clientId, groupId });
                 consume(result.document);
                 if (!editor.action(ctx => sendableSteps(ctx.get(editorViewCtx).state)))
                     localStorage.removeItem(recoveryKey);
             }
             catch (error: any) {
+                if (error.code === 'DOCUMENT_RENDER_FAILED' || error.code === 'DOCUMENT_SCHEMA_CHANGED' || error.status >= 500 || error instanceof RangeError) { fallback(error); return; }
                 if (error.status === 409) {
                     const current = await api('/documents/' + id + '?since=' + pending.version);
                     if (current.version === pending.version) {
@@ -147,7 +173,8 @@ export function DocumentEditor({ id, onStatus, heading }: {
                 if (initial.schemaVersion !== documentSchemaVersion) throw Error(t("服务端编辑器协议未更新，请重启服务并刷新页面"));
                 if (disposed)
                     return;
-                editor = await Editor.make().config(ctx => { ctx.set(rootCtx, host.current); ctx.set(defaultValueCtx, { type: 'json', value: initial.doc }); }).use(commonmark).use(gfm).use(embedRemark).use(embedSchema).use($prose(() => tools.plugin)).use($prose(() => collab({ version: initial.version, clientID: clientId }))).use(widgets).use($prose(() => new Plugin({ props: { editable: () => !locked() }, view: () => ({ update() { if (editor) {
+                const replacedKeymaps = new Set<MilkdownPlugin>([...strongKeymap, ...emphasisKeymap, ...strikethroughKeymap]);
+                editor = await Editor.make().config(ctx => { ctx.set(rootCtx, host.current); ctx.set(defaultValueCtx, { type: 'json', value: initial.doc }); }).use(commonmark.filter(plugin => !replacedKeymaps.has(plugin))).use(gfm.filter(plugin => !replacedKeymaps.has(plugin))).use(embedRemark).use(embedSchema).use(highlightRemark).use(highlightSchema).use(mathRemark).use(mathSchemas).use($prose(ctx => mathEditingPlugin(text => ctx.get(parserCtx)(text)))).use($prose(() => tools.plugin)).use($prose(() => tools.images.plugin)).use($prose(() => collab({ version: initial.version, clientID: clientId }))).use(widgets).use($prose(() => new Plugin({ props: { editable: () => !locked() }, view: () => ({ update() { if (editor) {
                             keep();
                             queueMicrotask(() => void pump());
                         } } }) }))).create();
@@ -161,7 +188,7 @@ export function DocumentEditor({ id, onStatus, heading }: {
             }
             catch (error: any) {
                 notify(error.message, true);
-                onStatusRef.current('编辑器加载失败');
+                fallback(error);
             }
         })();
         let findIndex=-1, lastQuery='';

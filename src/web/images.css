@@ -1,0 +1,15 @@
+.milkdown .editor img,.document-embed img { max-width:100%; height:auto; vertical-align:middle; }
+.milkdown .editor img.ProseMirror-selectednode { outline:2px solid var(--focus-ring); outline-offset:3px; }
+.image-toolbar { display:flex; flex-wrap:wrap; flex-shrink:0; gap:5px; align-items:center; padding:5px 20px; background:var(--surface-subtle); border-bottom:1px solid var(--border); }
+.image-toolbar > span { font-size:11px; color:var(--muted); margin-right:8px; }
+.image-toolbar button { padding:5px 7px; font-size:11px; background:transparent; }
+.image-upload-placeholder { display:inline-flex; vertical-align:top; flex-direction:column; align-items:flex-start; gap:8px; max-width:100%; width:260px; margin:10px 8px 10px 0; padding:12px; border:1px dashed var(--border-strong); border-radius:6px; background:var(--surface-subtle); white-space:normal; font-size:12px; }
+.image-upload-placeholder img { max-height:160px; object-fit:contain; align-self:center; }
+.image-upload-placeholder button { font-size:11px; padding:4px 8px; }
+.image-preview-dialog { width:min(1100px,95vw); display:flex; flex-direction:column; }
+.image-preview-actions { display:flex; align-items:center; gap:14px; margin-bottom:12px; }
+.image-preview-actions span { overflow-wrap:anywhere; min-width:0; }
+.image-preview-actions button { flex-shrink:0; }
+.image-preview-scroll { overflow:auto; max-height:70vh; text-align:center; background:var(--surface-subtle); }
+.image-preview-scroll img { max-width:100%; height:auto; }
+.image-preview-scroll.natural-size img { max-width:none; }
