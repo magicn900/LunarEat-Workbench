@@ -98,11 +98,13 @@ async function main() {
     const contractFile = new URL('./contracts.json', import.meta.url);
     if (existsSync(contractFile)) {
       const name = ['release','resume'].includes(command) ? 'control' : command;
-      const contract = read(contractFile)[name];
+      const catalog = read(contractFile);
+      const topic = ['versions','inspiration'].includes(name) && payload.action ? name + '.' + payload.action : name;
+      const contract = catalog[topic] || catalog[name];
       const shape = contract?.input?.properties ? contract.input : contract?.input?.oneOf?.find(option => option.properties?.action?.const === payload.action);
       if (shape?.properties) {
         const unexpected = Object.keys(payload).filter(key => !Object.hasOwn(shape.properties, key));
-        if (unexpected.length) fail('INVALID_INPUT', 'Unknown input keys: ' + unexpected.join(', ') + '. Run help ' + name + '. Expected top-level keys: ' + Object.keys(shape.properties).join(', ') + (contract.example ? '. Example: ' + JSON.stringify(contract.example) : ''));
+        if (unexpected.length) fail('INVALID_INPUT', 'Unknown input keys: ' + unexpected.join(', ') + '. Run help ' + topic + '. Expected top-level keys: ' + Object.keys(shape.properties).join(', '));
       }
     }
   }

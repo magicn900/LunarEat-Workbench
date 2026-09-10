@@ -42,14 +42,16 @@ export class AgentReads {
         return this.context.page(actor, input, items, { snapshot: source.snapshot, source: source.revision ? { revision: source.revision } : { draftHead: source.tree } }, 'find');
     }
     read(actor: Actor, input: any) {
+        this.context.checkHead(actor, input.expectedHead);
         if (input.cursor) return this.context.page(actor, input, [], {}, 'read');
         if (input.receipt) {
             const receipt = this.context.load(actor, input.receipt, 'receipt');
-            return this.context.page(actor, input, receipt.items, { receipt: input.receipt, snapshot: receipt.snapshot }, 'read');
+            return this.context.page(actor, input, receipt.items, { receipt: input.receipt, snapshot: receipt.snapshot, ...input.expectedHead ? { expectedHead: input.expectedHead } : {} }, 'read');
         }
         if (!input.ids?.length) agentFault('INPUT_REQUIRED', 'Supply ids, receipt or cursor.', 'read_help', 400);
         const source = this.context.source(actor, input), tree = this.context.tree(source);
-        const metadata = { snapshot: source.snapshot, source: source.revision ? { revision: source.revision } : { draftHead: source.tree } };
+        if (input.expectedHead && !source.revision && source.tree !== input.expectedHead) agentFault('PREVIEW_CHANGED', 'Snapshot does not match the expected draft.', 'repeat_preview', 409);
+        const metadata = { snapshot: source.snapshot, source: source.revision ? { revision: source.revision } : { draftHead: source.tree }, ...input.expectedHead ? { expectedHead: input.expectedHead } : {} };
         if (input.field) {
             if (input.ids.length !== 1) agentFault('ONE_TARGET_REQUIRED', 'Field-range reads require exactly one id.', 'choose_one_id', 400);
             const entity = tree[input.ids[0]];
@@ -60,7 +62,7 @@ export class AgentReads {
             if (input.offset > text.length) agentFault('RANGE_INVALID', 'Offset exceeds field length.', 'restart_field_read', 400);
             const end = Math.min(text.length, input.offset + input.length);
             const complete = end >= text.length;
-            return { ...metadata, id: entity.id, field: input.field, present: value !== undefined, encoding: typeof value === 'string' ? 'text' : 'json', text: text.slice(input.offset, end), offset: input.offset, end, totalLength: text.length, complete, next: complete ? null : { ids: input.ids, field: input.field, length: input.length, snapshot: source.snapshot, offset: end } };
+            return { ...metadata, id: entity.id, field: input.field, present: value !== undefined, encoding: typeof value === 'string' ? 'text' : 'json', text: text.slice(input.offset, end), offset: input.offset, end, totalLength: text.length, complete, next: complete ? null : { ids: input.ids, field: input.field, length: input.length, snapshot: source.snapshot, offset: end, ...input.expectedHead ? { expectedHead: input.expectedHead } : {} } };
         }
         const items = input.ids.map((id: string) => {
             const entity = tree[id];

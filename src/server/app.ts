@@ -7,6 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
+import { mergeResolutionSchema } from '../shared/workspaceMerge.js';
 import { documentSchemaVersion } from '../shared/embeds.js';
 import { actorFor, checkPassword, Fault, issueToken, capabilities } from './auth.js';
 import type { Service, Operation } from './service.js';
@@ -121,7 +122,7 @@ export async function createApp(service: Service, webRoot = 'dist') {
             return service.execute(current, control, () => service.publish(current, input, prepared), false);
         });
     });
-    app.post('/api/workspace/refresh', async (request) => controlled(request,current => service.refresh(current, z.object({ requestId, head: z.string(), main: z.string(), resolutions: z.record(z.string(), z.enum(['ours', 'theirs'])).optional() }).parse(request.body))));
+    app.post('/api/workspace/refresh', async (request) => controlled(request,current => service.refresh(current, z.object({ requestId, head: z.string(), main: z.string(), resolutions: z.record(z.string(), mergeResolutionSchema).optional() }).parse(request.body))));
     app.get('/api/changes', async (request) => service.changes(actor(request)));
     app.post('/api/changes/withdraw', async request => {
         const input = z.object({ id: z.string().min(1), revision: z.string().min(1) }).parse(request.body);

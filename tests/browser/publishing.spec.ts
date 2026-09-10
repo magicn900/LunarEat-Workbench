@@ -40,8 +40,33 @@ test('真实 MCP 丢弃遵守会话，Web 可撤销 Agent 的丢弃', async ({ p
     await login(page); const issued = await page.request.post('/api/tokens', { headers, data: { name: 'discard-mcp', scopes: ['workspace.read','workspace.write'] } }); const { token } = await issued.json();
     const client = new Client({ name: 'discard-browser', version: '1.0.0' }); await client.connect(new StdioClientTransport({ command: process.execPath, args: ['--import','tsx',resolve('src/agent/main.ts')], env: { ...process.env as Record<string,string>, WORKBENCH_URL: 'http://127.0.0.1:14319', WORKBENCH_TOKEN: token } }));
     const call = async (name: string, args: any = {}) => { const result: any = await client.callTool({ name, arguments: args }); expect(result.isError, JSON.stringify(result)).not.toBe(true); return JSON.parse(result.content[0].text); };
-    try {
-        await call('workspace_apply', { requestId: crypto.randomUUID(), operations: [{ type: 'field', id: 'guard', key: 'cost', expected: 1, value: 5 }] }); await call('workspace_write_session', { action: 'release' });
+      try {
+          const overview = await call('workspace_read');
+          expect(overview.tree).toBeUndefined();
+          expect(overview.project.id).toBe('demo');
+          const search = await call('workspace_search', { query: '守势', mode: 'title', match: 'exact' });
+          expect(search.items.some((item: any) => item.id === 'guard')).toBe(true);
+          expect(search.items.every((item: any) => item.body === undefined)).toBe(true);
+          const first = await call('workspace_search', { limit: 1 });
+          expect(first.complete).toBe(false);
+          const second = await call('workspace_search', { cursor: first.next, limit: 1 });
+          expect(second.items[0].id).not.toBe(first.items[0].id);
+          const current = await call('design_preview');
+          const field = await call('workspace_read', { ids: ['guide'], field: 'body', length: 1, expectedHead: current.head });
+          expect(field.source.draftHead).toBe(current.head);
+          expect(field.next.expectedHead).toBe(current.head);
+          if (field.next) {
+              const continuation = await call('workspace_read', field.next);
+              expect(continuation.offset).toBe(field.end);
+              expect(continuation.snapshot).toBe(field.snapshot);
+          }
+          const stale: any = await client.callTool({ name: 'workspace_read', arguments: { ids: ['guard'], field: 'body', expectedHead: 'stale' } });
+          expect(stale.isError).toBe(true);
+          expect(JSON.parse(stale.content[0].text).code).toBe('PREVIEW_CHANGED');
+          await call('workspace_apply', { requestId: crypto.randomUUID(), operations: [{ type: 'field', id: 'guard', key: 'cost', expected: 1, value: 5 }] }); await call('workspace_write_session', { action: 'release' });
+          const staleContinuation: any = await client.callTool({ name: 'workspace_read', arguments: field.next });
+          expect(staleContinuation.isError).toBe(true);
+          expect(JSON.parse(staleContinuation.content[0].text).code).toBe('PREVIEW_CHANGED');
         const preview = await call('design_preview'); const item = preview.review.find((item: any) => item.id === 'guard' && item.property === 'cost');
         const plan = await call('workspace_discard_preview', { head: preview.head, base: preview.base, main: preview.main, targets: [{ id: 'guard', key: item.key }] });
         await call('workspace_discard', { requestId: crypto.randomUUID(), head: plan.head, base: plan.base, main: plan.main, targets: plan.targets });

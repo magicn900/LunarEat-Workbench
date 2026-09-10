@@ -7,6 +7,7 @@ import type { Service, PreparedPublication } from './service.js';
 import { AgentContext, agentFault } from './agentContext.js';
 import { AgentReads } from './agentReads.js';
 import { AgentEdits } from './agentEdits.js';
+import type { MergeConflict } from '../shared/workspaceMerge.js';
 
 export class AgentCollaboration {
     readonly context: AgentContext;
@@ -26,6 +27,19 @@ export class AgentCollaboration {
         });
     }
     treeRef(actor: Actor, tree: string, revision: string | null = null) { return this.context.save(actor, 'snapshot', { tree, revision }); }
+    mergeConflictItems(conflicts: MergeConflict[], sources: { base: string; draft: string; main: string }) {
+        return conflicts.map(conflict => {
+            const [id, ...parts] = conflict.path.split('/').slice(1);
+            const field = parts.length === 2 && parts[0] === 'fields' ? parts[1] : parts.length === 1 && ['body','title','path'].includes(parts[0]) ? parts[0] : '$entity';
+            const side = (value: unknown, snapshot: string) => {
+                if (value === undefined) return { exists: false, complete: true };
+                const complete = Buffer.byteLength(JSON.stringify(value)) <= 600;
+                return { exists: true, complete, ...(complete ? { value } : {}), read: { ids: [id], field, snapshot, offset: 0, length: 2000 }, valuePath: field === '$entity' ? parts : [] };
+            };
+            const segmentsComplete = !!conflict.segments && Buffer.byteLength(JSON.stringify(conflict.segments)) <= 2000;
+            return { path: conflict.path, title: conflict.title.slice(0, 200), file: conflict.file.slice(0, 500), property: conflict.property, label: conflict.label.slice(0, 200), base: side(conflict.base, sources.base), ours: side(conflict.ours, sources.draft), theirs: side(conflict.theirs, sources.main), ...(conflict.segments ? { segmentsComplete, ...(segmentsComplete ? { segments: conflict.segments } : {}) } : {}) };
+        });
+    }
     history(actor: Actor, input: any) {
         requireScope(actor, 'workspace.read');
         if (['undo','redo'].includes(input.action)) {
@@ -83,7 +97,10 @@ export class AgentCollaboration {
             const review = this.context.save(actor, 'review', { head: preview.head, base: preview.base, main: preview.main });
             const baseTree = (this.service.store.db.prepare('SELECT tree FROM revisions WHERE id=? AND project_id=?').get(preview.base, actor.projectId) as { tree: string }).tree;
             const mainTree = (this.service.store.db.prepare('SELECT tree FROM revisions WHERE id=? AND project_id=?').get(preview.main, actor.projectId) as { tree: string }).tree;
-            return this.context.page(actor, input, this.differences(this.service.revisionTree(actor, preview.base), preview.ours), { review, publicationDraft: preview.publicationDraft, head: preview.head, base: preview.base, main: preview.main, conflicts: preview.conflicts.slice(0, 10), conflictsComplete: preview.conflicts.length <= 10, diagnostics: preview.diagnostics.slice(0, 10), diagnosticsComplete: preview.diagnostics.length <= 10, sources: { base: this.treeRef(actor, baseTree, preview.base), draft: this.treeRef(actor, preview.head), main: this.treeRef(actor, mainTree, preview.main) } }, 'versions:review');
+            const sources = { base: this.treeRef(actor, baseTree, preview.base), draft: this.treeRef(actor, preview.head), main: this.treeRef(actor, mainTree, preview.main) };
+            const incoming = this.differences(this.service.revisionTree(actor, preview.base), preview.theirs);
+            const conflicts = this.mergeConflictItems(preview.conflictDetails, sources);
+            return this.context.page(actor, input, this.differences(this.service.revisionTree(actor, preview.base), preview.ours), { review, publicationDraft: preview.publicationDraft, head: preview.head, base: preview.base, main: preview.main, conflicts: preview.conflicts.slice(0, 10), conflictsComplete: preview.conflicts.length <= 10, diagnostics: preview.diagnostics.slice(0, 10), diagnosticsComplete: preview.diagnostics.length <= 10, sources, incoming: { count: incoming.length, receipt: this.context.save(actor, 'receipt', { items: incoming }) }, conflictDetails: { count: conflicts.length, receipt: this.context.save(actor, 'receipt', { items: conflicts }) } }, 'versions:review');
         }
         const rows = this.service.store.db.prepare("SELECT * FROM publications WHERE project_id=? AND state='done' ORDER BY rowid DESC").all(actor.projectId) as any[];
         if (['inspect','confirmations'].includes(input.action)) {

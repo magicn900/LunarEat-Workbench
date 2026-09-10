@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { objectSchema, collectionSchema, viewSchema, folderSchema, fieldSchema, viewFilterSchema, entitySchema } from './model.js';
+import { mergeResolutionSchema } from './workspaceMerge.js';
 
 const id = z.string().min(1).max(200);
 const requestId = z.string().min(1).max(140);
@@ -30,7 +31,7 @@ export const agentSchemas = {
     connect: z.strictObject({}),
     schema: z.strictObject({ name: z.string().default('index') }),
     find: z.strictObject({ ...source, ...page, query: z.string().max(500).optional(), mode: z.enum(['title','path','text']).default('title'), match: z.enum(['exact','contains']).default('exact'), kind: z.enum(['object','collection','view','folder']).optional(), collection: id.optional(), relation: z.strictObject({ id, direction: z.enum(['incoming','outgoing']) }).optional(), fields: z.array(id).max(20).default([]) }),
-    read: z.strictObject({ ...source, ...page, ids: z.array(id).min(1).max(20).optional(), facets: z.array(z.enum(['fields','schema','outline','references'])).default([]), fields: z.array(id).max(30).default([]), field: id.optional(), offset: z.number().int().nonnegative().default(0), length: z.number().int().min(1).max(4000).default(2000), receipt: reference.optional() }),
+    read: z.strictObject({ ...source, ...page, expectedHead: id.optional(), ids: z.array(id).min(1).max(20).optional(), facets: z.array(z.enum(['fields','schema','outline','references'])).default([]), fields: z.array(id).max(30).default([]), field: id.optional(), offset: z.number().int().nonnegative().default(0), length: z.number().int().min(1).max(4000).default(2000), receipt: reference.optional() }),
     query: z.strictObject({ ...source, ...page, view: id.optional(), definition: queryDefinition.optional(), fields: z.array(id).max(30).default([]), selection: z.boolean().default(false) }),
     edit: editSchema,
     history: z.strictObject({ ...page, ...controlFields, action: z.enum(['list','inspect','undo','redo']).default('list'), id: id.optional(), objectId: id.optional(), actor: z.enum(['human','agent']).optional(), requestId: requestId.optional() }),
@@ -41,7 +42,7 @@ export const agentSchemas = {
         z.strictObject({ action: z.literal('review'), ...versionBase }),
         z.strictObject({ action: z.literal('withdraw'), ...controlFields, requestId, id, revision: id }),
         z.strictObject({ action: z.literal('publish'), ...controlFields, requestId, review: reference, title: z.string().min(1).max(200), description: z.string().max(20000).default('') }),
-        z.strictObject({ action: z.literal('refresh'), ...controlFields, requestId, review: reference, resolutions: z.record(z.string(), z.enum(['ours','theirs'])).optional() }),
+        z.strictObject({ action: z.literal('refresh'), ...controlFields, requestId, review: reference, resolutions: z.record(z.string(), mergeResolutionSchema).optional() }),
         z.strictObject({ action: z.literal('discard-preview'), review: reference, targets: z.array(z.strictObject({ id, key: z.string().optional() })).min(1).max(500) }),
         z.strictObject({ action: z.literal('discard'), ...controlFields, requestId, plan: reference }),
         z.strictObject({ action: z.literal('sync'), requestId, ids: z.array(id).min(1).max(100), repository: z.string().min(1), commit: z.string().min(1), note: z.string().min(1), active: z.boolean() })
@@ -72,9 +73,11 @@ export function describeAgentCommand(name: string): unknown {
     if (name === 'index') return { commands: Object.entries(agentDescriptions).map(([command, description]) => ({ command, description })), entities: ['object','collection','view','folder'], next: 'schema {name:command or entity}' };
     const entities = { object: objectSchema.strict(), collection: collectionSchema.strict().extend({ fields: z.array(fieldSchema.strict()) }), view: agentViewSchema, folder: folderSchema.strict() };
     const [parent, operation] = name.split('.');
+    const actionParent = parent === 'versions' || parent === 'inspiration';
+    if (actionParent && !operation) return { name, actionHelp: agentSchemas[parent].options.map(schema => parent + '.' + schema.shape.action.value), description: agentDescriptions[parent], complete: false, fullHelp: parent + '.full' };
     const variants = parent === 'edit' ? editOperation.options : parent === 'versions' ? agentSchemas.versions.options : parent === 'inspiration' ? agentSchemas.inspiration.options : [];
     const leaf = operation ? variants.find(schema => ('type' in schema.shape ? schema.shape.type : schema.shape.action).value === operation) : undefined;
-    const schema = operation ? leaf : Object.hasOwn(agentSchemas, name) ? agentSchemas[name as AgentCommand] : Object.hasOwn(entities, name) ? entities[name as keyof typeof entities] : undefined;
+    const schema = actionParent && operation === 'full' ? agentSchemas[parent] : operation ? leaf : Object.hasOwn(agentSchemas, name) ? agentSchemas[name as AgentCommand] : Object.hasOwn(entities, name) ? entities[name as keyof typeof entities] : undefined;
     if (!schema) return null;
     const input = z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' });
     if (name === 'edit' && input.properties?.operations) {
@@ -84,7 +87,7 @@ export function describeAgentCommand(name: string): unknown {
     return { name, input, example: agentExamples[name as AgentCommand], description: agentDescriptions[name as AgentCommand] };
 }
 export function agentContractCatalog() {
-    const names = ['index', ...Object.keys(agentSchemas), 'object', 'collection', 'view', 'folder', ...editOperation.options.map(schema => 'edit.' + schema.shape.type.value), ...agentSchemas.versions.options.map(schema => 'versions.' + schema.shape.action.value), ...agentSchemas.inspiration.options.map(schema => 'inspiration.' + schema.shape.action.value)];
+    const names = ['index', ...Object.keys(agentSchemas), 'object', 'collection', 'view', 'folder', 'versions.full', 'inspiration.full', ...editOperation.options.map(schema => 'edit.' + schema.shape.type.value), ...agentSchemas.versions.options.map(schema => 'versions.' + schema.shape.action.value), ...agentSchemas.inspiration.options.map(schema => 'inspiration.' + schema.shape.action.value)];
     return Object.fromEntries(names.map(name => [name, describeAgentCommand(name)]));
 }
 export function parseAgentInput(command: AgentCommand, raw: unknown) {
@@ -94,7 +97,7 @@ export function parseAgentInput(command: AgentCommand, raw: unknown) {
             const unused = keys.filter(key => Object.hasOwn(data, key));
             if (unused.length) throw new z.ZodError(unused.map(key => ({ code: 'custom', path: [key], message: 'Parameter is not used in this mode; omit it.' })));
         };
-        if (data.cursor) reject(Object.keys(data).filter(key => !['cursor','action','limit','maxBytes'].includes(key)));
+        if (data.cursor) reject(Object.keys(data).filter(key => !['cursor','action','limit','maxBytes',...(command === 'read' ? ['expectedHead'] : [])].includes(key)));
         if (command === 'read') {
             if (data.receipt) reject(['ids','snapshot','revision','facets','fields','field','offset','length']);
             if (data.field) reject(['facets','fields','limit','maxBytes']);

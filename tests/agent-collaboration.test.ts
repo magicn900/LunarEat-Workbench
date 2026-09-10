@@ -23,11 +23,42 @@ const send = async (command: string, payload: unknown = {}, credential = token) 
 };
 const tree = () => store.tree(service.workspace(human).head);
 const write = (operations: unknown[], extra = {}) => send('edit', { taskId, requestId: randomUUID(), operations, ...extra });
+function prepareMerge(large = false) {
+    const publisher = { ...human, userId: 'developer', username: 'developer', sessionId: 'merge-publisher' };
+    const main = store.main('demo'), baseline = service.revisionTree(human, main);
+    for (const actor of [human, publisher]) store.db.prepare('UPDATE workspaces SET base=?,head=? WHERE id=?').run(main, store.putTree(baseline), service.workspace(actor).id);
+    const cost = (baseline.frost as any).fields.cost;
+    const suffix = randomUUID();
+    const ours = (large ? '我的长正文\n'.repeat(5000) : '我的正文') + suffix;
+    const theirs = (large ? '团队长正文\n'.repeat(5000) : '团队正文') + suffix;
+    service.mutate(publisher, randomUUID(), [{ type: 'field', id: 'frost', key: 'cost', expected: cost, value: cost + 1 }, { type: 'put', entity: { ...baseline.guide, body: theirs } as any, expected: baseline.guide }]);
+    const preview = service.preview(publisher);
+    service.publish(publisher, { requestId: randomUUID(), head: preview.head, main: preview.main, title: '团队合并测试', description: '' });
+    service.mutate(human, randomUUID(), [{ type: 'field', id: 'frost', key: 'cost', expected: cost, value: cost + 2 }, { type: 'put', entity: { ...baseline.guide, body: ours } as any, expected: baseline.guide }]);
+    return { revision: store.main('demo'), cost, ours, theirs };
+}
 beforeAll(async () => {
     directory = mkdtempSync(join(tmpdir(), 'workbench-agent-collaboration-')); store = new Store(join(directory, 'data')); seed(store, 'isolated-agent-tests'); codec = await createCodec(); service = new Service(store, codec); app = await createApp(service); url = await app.listen({ port: 0, host: '127.0.0.1' });
     const user = store.db.prepare("SELECT id FROM users WHERE username='designer'").get() as { id: string };
     store.db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(store.hash('human-agent'), user.id, Date.now() + 3600000); human = actorFor(store, 'human-agent', false, 'demo'); initialHead = service.workspace(human).head;
 }, 30000);
+it('expectedHead checks the live draft for ranges and cursors while unguarded snapshots remain readable', async () => {
+    const head = service.workspace(human).head;
+    const first = await send('read', { ids: ['guide'], field: 'body', length: 1, expectedHead: head });
+    expect(first.status).toBe(200);
+    expect(first.next.expectedHead).toBe(head);
+    expect((await send('read', first.next)).status).toBe(200);
+    const listed = await send('read', { ids: ['frost','guard'], limit: 1, expectedHead: head });
+    expect(listed.next).toBeTruthy();
+    expect((await send('read', { cursor: listed.next, expectedHead: head })).status).toBe(200);
+    service.mutate(human, randomUUID(), [{ type: 'field', id: 'frost', key: 'cost', expected: 2, value: 3 }]);
+    expect((await send('read', first.next)).code).toBe('PREVIEW_CHANGED');
+    expect((await send('read', { cursor: listed.next })).code).toBe('PREVIEW_CHANGED');
+    expect((await send('read', { cursor: listed.next, expectedHead: service.workspace(human).head })).code).toBe('PREVIEW_CHANGED');
+    const { expectedHead, ...snapshotRead } = first.next;
+    expect((await send('read', snapshotRead)).status).toBe(200);
+    expect((await send('read', { ...snapshotRead, expectedHead: service.workspace(human).head })).code).toBe('PREVIEW_CHANGED');
+});
 it('显式 fields 直接投影，元信息修改不用回传正文', async () => {
     const found = await send('read', { ids: ['frost'], fields: ['title','cost'] }); expect(found.items[0].fields.cost).toBe(2); expect(found.items[0].title).toBe('霜刃'); expect(found.items[0].absent).toBeUndefined();
     const before = tree().frost;
@@ -169,7 +200,13 @@ it('下载客户端支持离线精确帮助、全局参数、内联输入和自�
     const execute = promisify(execFile), script = join(kit, 'scripts/agent.mjs');
     const invoke = async (args: string[], environment = {}) => { try { return JSON.parse((await execute(process.execPath, [script, ...args], { env: { ...process.env, WORKBENCH_CONFIG_HOME: join(directory, 'client-config'), WORKBENCH_TOKEN: token, ...environment } })).stdout); } catch (error: any) { return JSON.parse(error.stdout); } };
     expect((await invoke(['help','edit.field'])).input.properties.type.const).toBe('field');
+    expect((await invoke(['help','versions'])).actionHelp).toContain('versions.refresh');
+    expect((await invoke(['help','versions.full'])).input).toBeDefined();
     expect((await invoke(['--profile','trial','configure','--url',url])).configured).toBe(true);
+    const invalidRefresh = await invoke(['versions','--profile','trial','--json',JSON.stringify({ action: 'refresh', unexpected: true })]);
+    expect(invalidRefresh.code).toBe('INVALID_INPUT');
+    expect(invalidRefresh.error).toContain('help versions.refresh');
+    expect(invalidRefresh.error).not.toContain('list');
     const invalid = await invoke(['read','--profile','trial','--json',JSON.stringify({ id: 'frost', part: 'schema' })]); expect(invalid.code).toBe('INVALID_INPUT'); expect(invalid.error).toContain('Expected top-level keys'); expect(invalid.status).toBeUndefined();
     if (process.platform === 'win32') {
         const command = "$OutputEncoding = [System.Text.UTF8Encoding]::new($false); '" + JSON.stringify({ query: '霜刃' }) + "' | & '" + process.execPath + "' '" + script + "' find --profile trial --input -";
@@ -185,5 +222,66 @@ it('下载客户端支持离线精确帮助、全局参数、内联输入和自�
     expect((await invoke(retryArgs, { NODE_OPTIONS: '--import=' + pathToFileURL(hook).href })).code).toBe('REQUEST_UNCERTAIN');
     const replay = await invoke(retryArgs); expect(replay.replayed).toBe(true); expect(replay.writeSessionId).toBeTruthy();
     expect((await invoke(['release','--profile','trial','--task',retryTask])).ok).toBe(true); expect(service.control.publicState(service.workspace(human).id)).toBeNull();
+    const mergeSetup = prepareMerge();
+    expect(JSON.stringify(await invoke(['help','versions.refresh']))).toContain('value');
+    const mergeReview = await invoke(['versions','--profile','trial','--json',JSON.stringify({ action: 'review' })]);
+    expect(mergeReview.ok).toBe(true);
+    const mergeDetails = await invoke(['read','--profile','trial','--json',JSON.stringify({ receipt: mergeReview.conflictDetails.receipt })]);
+    expect(mergeDetails.items.map((item: any) => item.path)).toContain('/guide/body');
+    const mergeTask = (await invoke(['new-task','--profile','trial'])).taskId;
+    const merged = await invoke(['versions','--profile','trial','--task',mergeTask,'--json',JSON.stringify({ action: 'refresh', review: mergeReview.review, resolutions: { '/frost/fields/cost': { value: mergeSetup.cost + 5 }, '/guide/body': { value: '真实 Skill 客户端合并结果' } } })]);
+    expect(merged.ok).toBe(true);
+    expect((tree().frost as any).fields.cost).toBe(mergeSetup.cost + 5);
+    expect((tree().guide as any).body).toBe('真实 Skill 客户端合并结果');
+    expect(store.main('demo')).toBe(mergeSetup.revision);
+    expect((await invoke(['release','--profile','trial','--task',mergeTask])).ok).toBe(true);
+    expect(service.control.publicState(service.workspace(human).id)).toBeNull();
     expect(readFileSync(join(directory,'client-config','trial.json'),'utf8')).not.toContain(token);
 }, 30000);
+
+it('Skill 合并预览提供冻结的更新与冲突详情，自定义结果不发布且可重试', async () => {
+    const { revision, cost } = prepareMerge();
+    const review = await send('versions', { action: 'review' });
+    expect(review.status).toBe(200);
+    expect(review.incoming.count).toBeGreaterThan(0);
+    expect(review.conflictDetails.count).toBe(2);
+    const incoming = await send('read', { receipt: review.incoming.receipt });
+    expect(incoming.items.map((item: any) => item.id)).toContain('frost');
+    const conflicts = await send('read', { receipt: review.conflictDetails.receipt });
+    expect(conflicts.items.find((item: any) => item.path === '/frost/fields/cost')).toMatchObject({ base: { value: cost }, ours: { value: cost + 2 }, theirs: { value: cost + 1 } });
+    expect(conflicts.items.find((item: any) => item.path === '/guide/body').segmentsComplete).toBe(true);
+    const input = { action: 'refresh', taskId, requestId: randomUUID(), review: review.review, resolutions: { '/frost/fields/cost': { value: cost + 3 }, '/guide/body': { value: '综合双方意图的正文' } } };
+    const result = await send('versions', input);
+    expect(result.status).toBe(200);
+    expect((tree().frost as any).fields.cost).toBe(cost + 3);
+    expect((tree().guide as any).body).toBe('综合双方意图的正文');
+    expect(service.workspace(human).base).toBe(revision);
+    expect(store.main('demo')).toBe(revision);
+    expect((await send('versions', input)).replayed).toBe(true);
+    expect((await send('control', { action: 'release', taskId, writeSessionId: result.writeSessionId })).status).toBe(200);
+});
+
+it('Skill 大正文冲突详情有界分页且完整内容使用冻结快照分段读取', async () => {
+    const { ours, theirs } = prepareMerge(true);
+    const review = await send('versions', { action: 'review' });
+    expect(review.status).toBe(200);
+    expect(Buffer.byteLength(JSON.stringify(review))).toBeLessThan(12000);
+    const first = await send('read', { receipt: review.conflictDetails.receipt, limit: 1 });
+    expect(first.complete).toBe(false);
+    const second = await send('read', { cursor: first.next });
+    const conflict = [...first.items, ...second.items].find((item: any) => item.path === '/guide/body');
+    expect(conflict.segmentsComplete).toBe(false);
+    expect(conflict.ours.complete).toBe(false);
+    expect(conflict.ours.value).toBeUndefined();
+    expect(Buffer.byteLength(JSON.stringify(second))).toBeLessThan(12000);
+    service.saveDocumentSource(human, 'guide', { requestId: randomUUID(), expected: (tree().guide as any).body, body: '后续修改' });
+    for (const [side, expected] of [[conflict.ours, ours], [conflict.theirs, theirs]] as const) {
+        const value = await send('read', side.read);
+        expect(value.text).toBe(expected.slice(0, 2000));
+        expect(value.complete).toBe(false);
+        expect((await send('read', value.next)).offset).toBe(2000);
+    }
+    expect((await send('versions', { action: 'refresh', taskId, requestId: randomUUID(), review: review.review, resolutions: { '/frost/fields/cost': 'ours', '/guide/body': 'ours' } })).status).toBe(409);
+    const other = issueToken(store, human, 'another merge connection', ['workspace.read']).token;
+    expect((await send('read', { receipt: review.conflictDetails.receipt }, other)).code).toBe('CONTEXT_EXPIRED');
+});

@@ -242,6 +242,50 @@ describe('并发、隔离、幂等与撤销',()=>{
  it('Agent 段落补丁进入相同文档步骤流',()=>{service.document(designer,'overview');service.mutate({...designer,kind:'agent'},randomUUID(),[{type:'patch',id:'overview',before:'3 点能量',after:'4 点能量'}]);const remote=service.document(designer,'overview',0);expect(remote.body).toContain('4 点能量');expect(remote.steps.length).toBeGreaterThan(0);});
 });
 describe('发布和同步',()=>{
+ it('合并预览返回双方和基线，自定义字段解决不发布且可幂等重试',()=>{
+  field(designer,'cost',2,3); publish(); field(developer,'cost',2,4);
+  const preview=service.preview(developer);
+  expect(preview.conflictDetails).toContainEqual(expect.objectContaining({path:'/frost/fields/cost',base:2,ours:4,theirs:3}));
+  expect(preview.incoming.length).toBeGreaterThan(0);
+  const input={requestId:randomUUID(),head:preview.head,main:preview.main,resolutions:{'/frost/fields/cost':{value:5}}};
+  const result=service.refresh(developer,input);
+  expect(service.refresh(developer,input)).toEqual(result);
+  expect((service.snapshot(developer).tree.frost as DesignObject).fields.cost).toBe(5);
+  expect(service.workspace(developer).base).toBe(preview.main);
+  expect(store.main('demo')).toBe(preview.main);
+  expect(service.changes(developer)).toHaveLength(1);
+ });
+ it('自定义冲突结果仍校验字段类型并原子回滚',()=>{
+  field(designer,'cost',2,3); publish(); field(developer,'cost',2,4);
+  const preview=service.preview(developer), before=service.snapshot(developer);
+  expect(()=>service.refresh(developer,{requestId:randomUUID(),head:preview.head,main:preview.main,resolutions:{'/frost/fields/cost':{value:'not a number'}}})).toThrow('校验失败');
+  expect(service.snapshot(developer).workspace).toEqual(before.workspace);
+  expect(service.snapshot(developer).tree).toEqual(before.tree);
+ });
+ it('拒绝非冲突路径和过期合并结果',()=>{
+  field(designer,'cost',2,3); publish(); field(developer,'cost',2,4);
+  const preview=service.preview(developer);
+  expect(()=>service.refresh(developer,{requestId:randomUUID(),head:preview.head,main:preview.main,resolutions:{'/frost/title':{value:'unexpected'}}})).toThrow('未知冲突');
+  field(developer,'cost',4,6);
+  expect(()=>service.refresh(developer,{requestId:randomUUID(),head:preview.head,main:preview.main,resolutions:{'/frost/fields/cost':{value:5}}})).toThrow('重新预览');
+  const next=service.preview(developer); field(designer,'cost',3,7); publish();
+  expect(()=>service.refresh(developer,{requestId:randomUUID(),head:next.head,main:next.main,resolutions:{'/frost/fields/cost':{value:5}}})).toThrow('重新预览');
+ });
+ it('删除与修改冲突拒绝非法自定义对象，显式选删除会清理文档状态',()=>{
+  const entity=service.snapshot(designer).tree.guide;
+  service.mutate(designer,randomUUID(),[{type:'put',entity:{...entity,id:'merge-delete',path:'设计/merge-delete.md'},expected:null}]); publish();
+  let preview=service.preview(developer); service.refresh(developer,{requestId:randomUUID(),head:preview.head,main:preview.main});
+  service.document(developer,'merge-delete');
+  const current=service.snapshot(developer).tree['merge-delete'];
+  service.mutate(developer,randomUUID(),[{type:'put',entity:{...current,title:'我的修改'},expected:current}]);
+  service.mutate(designer,randomUUID(),[{type:'delete',id:'merge-delete',expected:service.snapshot(designer).tree['merge-delete']}]); publish();
+  preview=service.preview(developer);
+  expect(preview.conflicts).toContain('/merge-delete');
+  for(const value of [null,5,JSON.parse(JSON.stringify({...current,id:'wrong-id'}))]) expect(()=>service.refresh(developer,{requestId:randomUUID(),head:preview.head,main:preview.main,resolutions:{'/merge-delete':{value}}})).toThrow('数据结构不合法');
+  service.refresh(developer,{requestId:randomUUID(),head:preview.head,main:preview.main,resolutions:{'/merge-delete':'theirs'}});
+  expect(service.snapshot(developer).tree['merge-delete']).toBeUndefined();
+  expect(store.db.prepare('SELECT 1 FROM documents WHERE workspace_id=? AND entity_id=?').get(service.workspace(developer).id,'merge-delete')).toBeUndefined();
+ });
  it('发布生成真实 Git revision，没有审批状态',()=>{field(designer,'cost',2,3);const change=publish();expect(store.main('demo')).toBe(change.revision);expect(store.git('demo',['show',change.revision+':技能/frost.md'])).toContain('cost: 3');expect(service.changes(designer)[0].confirmations).toEqual([]);expect(service.preview(designer).diff).toHaveLength(0);});
  it('预览后编辑会令发布前提失效',()=>{field(designer,'cost',2,3);const preview=service.preview(designer);field(designer,'cost',3,4);expect(()=>service.publish(designer,{requestId:randomUUID(),head:preview.head,main:preview.main,title:'过期',description:''})).toThrow('预览已过期');});
  it('main 前进后采用三方合并保留双方字段',()=>{field(designer,'cost',2,3);publish();field(developer,'description','造成伤害并施加寒冷','程序员说明');const preview=service.preview(developer);expect(preview.conflicts).toEqual([]);service.refresh(developer,{requestId:randomUUID(),head:preview.head,main:preview.main});expect((service.snapshot(developer).tree.frost as DesignObject).fields).toEqual({cost:3,description:'程序员说明'});});

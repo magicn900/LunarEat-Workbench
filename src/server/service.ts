@@ -10,6 +10,7 @@ import { History } from './history.js';
 import { deletionBlockers } from '../shared/deletion.js';
 import { Step, Transform } from '@milkdown/prose/transform';
 import { entitySchema, operationSchema, safePath, equal, diffTrees, diagnostics, mergeTrees, references, viewReferences, serialize, type Actor, type Tree, type Entity } from '../shared/model.js';
+import { mergeConflicts, mergeResolutionSchema, type MergeResolution } from '../shared/workspaceMerge.js';
 import { Fault, requireScope } from './auth.js';
 import type { Store } from './store.js';
 import type { Codec } from './codec.js';
@@ -301,7 +302,7 @@ const workspace = this.workspace(actor), entity = this.store.entity(workspace.he
         const differences = diffTrees(base, ours);
         const raw = [...new Set(differences.map(item => item.id))].map(id => ({ id, title: (ours[id] || base[id]).path, kind: '文件', property: '原始文本', before: base[id] ? serialize(base[id]) : '', after: ours[id] ? serialize(ours[id]) : '' }));
         const publicationDraft = this.store.db.prepare('SELECT title,description FROM publication_drafts WHERE workspace_id=?').get(workspace.id);
-        return { head: workspace.head, main, base: workspace.base, publicationDraft, raw, diff: differences, review: reviewChanges(base, ours), conflicts: merged.conflicts, diagnostics: diagnostics(merged.tree, true), candidate: merged.tree, theirs, ours };
+        return { head: workspace.head, main, base: workspace.base, publicationDraft, raw, diff: differences, review: reviewChanges(base, ours), incoming: reviewChanges(base, theirs), conflictDetails: mergeConflicts(merged.conflicts, base, ours, theirs), conflicts: merged.conflicts, diagnostics: diagnostics(merged.tree, true), candidate: merged.tree, theirs, ours };
     }
     discardPreview(actor: Actor, input: { head: string; base: string; main: string; targets: DiscardTarget[] }) {
         requireScope(actor, 'workspace.read');
@@ -355,7 +356,7 @@ const workspace = this.workspace(actor), entity = this.store.entity(workspace.he
         requestId: string;
         head: string;
         main: string;
-        resolutions?: Record<string, 'ours' | 'theirs'>;
+        resolutions?: Record<string, MergeResolution>;
     }) {
         requireScope(actor, 'workspace.write');
         return this.once(actor, input.requestId, () => {
@@ -363,14 +364,20 @@ const workspace = this.workspace(actor), entity = this.store.entity(workspace.he
             if (preview.head !== input.head || preview.main !== input.main)
                 throw new Fault(409, '工作区或 main 已更新，请重新预览');
             const candidate = preview.candidate;
+            if (Object.keys(input.resolutions || {}).some(path => !preview.conflicts.includes(path)))
+                throw new Fault(422, '解决结果包含未知冲突，请重新预览');
             for (const conflict of preview.conflicts) {
                 const choice = input.resolutions?.[conflict];
                 if (!choice)
                     throw new Fault(409, '需要解决合并冲突', preview.conflicts);
                 const parts = conflict.split('/').slice(1);
-                let source: any = choice === 'ours' ? preview.ours : preview.theirs;
-                for (const part of parts)
-                    source = source?.[part];
+                const resolution = mergeResolutionSchema.parse(choice);
+                let source: any;
+                if (typeof resolution === 'object') source = resolution.value;
+                else {
+                    source = resolution === 'ours' ? preview.ours : preview.theirs;
+                    for (const part of parts) source = source?.[part];
+                }
                 let target: any = candidate;
                 for (const part of parts.slice(0, -1))
                     target = target[part] ??= {};
@@ -379,10 +386,14 @@ const workspace = this.workspace(actor), entity = this.store.entity(workspace.he
                 else
                     target[parts.at(-1)!] = source;
             }
+            for (const [id, entity] of Object.entries(candidate)) {
+                if (!entitySchema.safeParse(entity).success || entity.id !== id)
+                    throw new Fault(422, '合并结果的数据结构不合法', [id]);
+            }
             const workspace = this.workspace(actor), result = this.write(actor, workspace, candidate, 'refresh:' + input.requestId);
             this.store.db.prepare('UPDATE workspaces SET base=? WHERE id=?').run(preview.main, workspace.id);
-            for (const entity of Object.values(candidate))
-                this.syncDocument(workspace.id, entity.id, entity, 'refresh');
+            for (const id of new Set([...Object.keys(preview.ours), ...Object.keys(candidate)]))
+                this.syncDocument(workspace.id, id, candidate[id], 'refresh');
             this.store.emit(actor.projectId, workspace.id, 'workspace', { base: preview.main });
             return result;
         });

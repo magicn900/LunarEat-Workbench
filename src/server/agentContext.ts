@@ -39,6 +39,9 @@ export class AgentContext {
         const data = { tree, revision: input.revision || null };
         return { ...data, snapshot: this.save(actor, 'snapshot', data) };
     }
+    checkHead(actor: Actor, expectedHead?: string) {
+        if (expectedHead && this.service.workspace(actor).head !== expectedHead) agentFault('PREVIEW_CHANGED', 'Draft changed; obtain a new preview before continuing.', 'repeat_preview', 409);
+    }
     tree(source: { tree: string }): Tree { return this.service.store.tree(source.tree); }
     page(actor: Actor, input: { cursor?: string; limit?: number; maxBytes?: number }, items: unknown[], metadata: Record<string, unknown> = {}, purpose = 'read') {
         let offset = 0;
@@ -46,6 +49,7 @@ export class AgentContext {
             const saved = this.load(actor, input.cursor, 'page:' + purpose);
             items = saved.items; offset = saved.offset; metadata = saved.metadata;
         }
+        if (purpose === 'read') this.checkHead(actor, metadata.expectedHead as string | undefined);
         const limit = input.limit || 20, budget = input.maxBytes || 12000;
         const selected: unknown[] = [];
         let bytes = Buffer.byteLength(JSON.stringify(metadata)) + 400;
