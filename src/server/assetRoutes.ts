@@ -9,6 +9,7 @@ import { imageTypes, imageUploadLimit } from '../shared/assets.js';
 export function registerAssetRoutes(app: FastifyInstance, service: Service) {
     let uploading = 0;
     const active = new WeakSet<FastifyRequest>();
+    const releaseUpload = async (request: FastifyRequest) => { if (active.delete(request)) uploading--; };
     const parameters = z.object({ projectId: z.string().min(1).max(150), documentId: z.string().min(1).max(150).optional(), assetId: z.string().uuid().optional() });
     const actor = (request: FastifyRequest) => {
         const { projectId } = parameters.parse(request.params);
@@ -26,7 +27,8 @@ export function registerAssetRoutes(app: FastifyInstance, service: Service) {
             active.add(request);
             uploading++;
         },
-        onResponse: async request => { if (active.delete(request)) uploading--; }
+        onResponse: releaseUpload,
+        onRequestAbort: releaseUpload
     }, async request => {
         const { documentId } = parameters.parse(request.params);
         const input = z.object({ taskId: z.string().max(150).optional(), writeSessionId: z.string().uuid().optional() }).parse(request.query);
