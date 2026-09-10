@@ -1,5 +1,29 @@
 import { test, expect, type Page } from '@playwright/test';
 const headers = { 'x-workbench-client': 'test' };
+test('最新发布可以取消或确认撤回，刷新后保留名称简介', async ({page}) => {
+    await login(page);
+    const entity={id:'withdraw-ui-example',kind:'object',title:'撤回验证内容',path:'验证/撤回.md',body:'保留这份草稿',collection:null,fields:{}};
+    expect((await page.request.post('/api/workspace/operations',{headers,data:{requestId:crypto.randomUUID(),operations:[{type:'put',entity,expected:null}]}})).ok()).toBe(true);
+    const preview=await (await page.request.get('/api/publish/preview')).json();
+    const publication=await (await page.request.post('/api/publish',{headers,data:{requestId:crypto.randomUUID(),head:preview.head,main:preview.main,title:'撤回名称保留验证',description:'撤回简介保留验证'}})).json();
+    expect(publication.revision).toBeTruthy();
+    await page.getByRole('button',{name:'发布记录',exact:true}).click();
+    await page.getByRole('button',{name:'撤回到草稿',exact:true}).click();
+    await page.getByRole('dialog',{name:'撤回到草稿',exact:true}).getByRole('button',{name:'取消',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'撤回名称保留验证',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'撤回到草稿',exact:true}).click();
+    await page.getByRole('dialog',{name:'撤回到草稿',exact:true}).getByRole('button',{name:'确认撤回',exact:true}).click();
+    await expect(page.getByRole('dialog',{name:'撤回到草稿',exact:true})).toHaveCount(0);
+    await expect(page.getByRole('heading',{name:'撤回名称保留验证',exact:true})).toHaveCount(0);
+    await page.reload();
+    await page.getByRole('button',{name:'撤回验证内容',exact:true}).click();
+    await page.getByRole('button',{name:'发布变更',exact:true}).click();
+    const dialog=page.getByRole('dialog',{name:'发布正式设计'});
+    await expect(dialog.getByLabel('变更标题')).toHaveValue('撤回名称保留验证');
+    await expect(dialog.getByLabel('变更说明')).toHaveValue('撤回简介保留验证');
+    const restored=await (await page.request.get('/api/workspace')).json();
+    expect(restored.main).toBe(preview.main); expect(restored.tree[entity.id].body).toBe(entity.body);
+});
 async function login(page: Page, username = 'designer') { await page.goto('/'); await page.getByLabel('账号', { exact: true }).fill(username); await page.getByLabel('密码', { exact: true }).fill('e2e-password-123'); await page.getByRole('button', { name: '登录' }).click(); await expect(page.locator('.milkdown .editor')).toBeVisible(); }
 test('发布记录按实现进度浏览，确认与重新标记可取消，策划只读状态，窄屏列表详情切换', async ({ page, browser }) => {
     await login(page);

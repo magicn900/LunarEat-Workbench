@@ -65,6 +65,60 @@ it('嵌入块 Markdown 往返，代码块和行内示例不转换', () => {
 });
 
 describe('发布前丢弃草稿修改', () => {
+ it('无影响撤回恢复正式基线、内容和发布文案，不留发布记录，可再次发布', () => {
+  field(designer,'cost',2,7); const publication=publish();
+  expect(service.changes(designer)[0].withdrawalBlocker).toBeNull();
+  service.withdraw(designer,{id:publication.id,revision:publication.revision});
+  expect(store.main('demo')).toBe(publication.old_main);
+  expect(service.workspace(designer).base).toBe(publication.old_main);
+  expect(service.workspace(designer).head).toBe(publication.tree);
+  expect(service.changes(designer)).toEqual([]);
+  expect(store.db.prepare('SELECT 1 FROM revisions WHERE id=?').get(publication.revision)).toBeUndefined();
+  service=new Service(store,codec);
+  expect(service.preview(designer).publicationDraft).toEqual({title:publication.title,description:publication.description});
+  expect(service.preview(designer).diff.length).toBeGreaterThan(0);
+  publish(); expect(service.preview(designer).publicationDraft).toBeUndefined();
+ });
+ it('非本人、缺权限和过期版本不能撤回', () => {
+  field(designer,'cost',2,7); const publication=publish(), input={id:publication.id,revision:publication.revision};
+  expect(()=>service.withdraw(developer,input)).toThrow('仅发布者');
+  expect(()=>service.withdraw({...designer,scopes:['workspace.read']},input)).toThrow('缺少权限');
+  expect(()=>service.withdraw(designer,{...input,revision:publication.old_main})).toThrow('已更新');
+  expect(store.main('demo')).toBe(publication.revision);
+ });
+ it('其他工作区吸收正式版后，即使没有修改也阻止撤回', () => {
+  service.workspace(developer); field(designer,'cost',2,7); const publication=publish();
+  const preview=service.preview(developer);
+  service.refresh(developer,{requestId:randomUUID(),head:preview.head,main:preview.main});
+  expect(()=>service.withdraw(designer,{id:publication.id,revision:publication.revision})).toThrow('已有工作区');
+ });
+ it('发布后新建的工作区也阻止撤回', () => {
+  field(designer,'cost',2,7); const publication=publish(); service.workspace({...developer,userId:randomUUID()});
+  expect(()=>service.withdraw(designer,{id:publication.id,revision:publication.revision})).toThrow('已有工作区');
+ });
+ it('新草稿和后续发布阻止撤回', () => {
+  field(designer,'cost',2,7); const publication=publish(), input={id:publication.id,revision:publication.revision};
+  field(designer,'cost',7,8); expect(()=>service.withdraw(designer,input)).toThrow('已有草稿修改');
+  publish(); expect(()=>service.withdraw(designer,input)).toThrow('最新正式发布');
+ });
+ it('确认同步后再取消仍不能撤回', () => {
+  service.workspace(developer); field(designer,'cost',2,7); const publication=publish();
+  const input={ids:[publication.id],repository:'test',commit:'abc',note:'verified'};
+  service.confirm(developer,{...input,requestId:randomUUID(),active:true});
+  expect(()=>service.withdraw(designer,{id:publication.id,revision:publication.revision})).toThrow('实现同步记录');
+  service.confirm(developer,{...input,requestId:randomUUID(),active:false});
+  expect(()=>service.withdraw(designer,{id:publication.id,revision:publication.revision})).toThrow('实现同步记录');
+ });
+ it.each([false,true])('撤回中断恢复，不留临时状态：Git 已回退 %s', reverted => {
+  field(designer,'cost',2,7); const publication=publish();
+  store.db.prepare("UPDATE publications SET state='withdrawing' WHERE id=?").run(publication.id);
+  if(reverted) store.git('demo',['update-ref','refs/heads/main',publication.old_main,publication.revision]);
+  service=new Service(store,codec); service.recover();
+  expect(store.main('demo')).toBe(publication.old_main);
+  expect(service.workspace(designer).head).toBe(publication.tree);
+  expect(service.preview(designer).publicationDraft).toEqual({title:publication.title,description:publication.description});
+  expect(store.db.prepare('SELECT 1 FROM publications WHERE id=?').get(publication.id)).toBeUndefined();
+ });
  const inputFor = (targets: {id:string;key?:string}[]) => { const preview = service.preview(designer); return { requestId:randomUUID(), head:preview.head, base:preview.base, main:preview.main, targets }; };
  it('丢弃字段保留其他有效修改，幂等且可以撤销重做', () => {
   field(designer,'cost',2,9); service.mutate(designer,randomUUID(),[{type:'patch',id:'overview',before:'3 点能量',after:'4 点能量'}]);

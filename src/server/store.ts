@@ -32,6 +32,7 @@ export class Store {
             'CREATE TABLE IF NOT EXISTS trees(id TEXT PRIMARY KEY,manifest TEXT NOT NULL);',
             'CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,project_id TEXT NOT NULL,base TEXT NOT NULL,head TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 0,UNIQUE(user_id,project_id));',
             'CREATE TABLE IF NOT EXISTS revisions(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,tree TEXT NOT NULL,parent TEXT,created TEXT NOT NULL);',
+            'CREATE TABLE IF NOT EXISTS publication_drafts(workspace_id TEXT PRIMARY KEY,title TEXT NOT NULL,description TEXT NOT NULL);',
             'CREATE TABLE IF NOT EXISTS publications(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,workspace_id TEXT NOT NULL,old_main TEXT NOT NULL,revision TEXT NOT NULL,tree TEXT NOT NULL,title TEXT NOT NULL,description TEXT NOT NULL,actor TEXT NOT NULL,state TEXT NOT NULL,created TEXT NOT NULL);',
             'CREATE TABLE IF NOT EXISTS confirmations(id TEXT PRIMARY KEY,publication_id TEXT NOT NULL,repository TEXT NOT NULL,commit_id TEXT NOT NULL,note TEXT NOT NULL,actor TEXT NOT NULL,active INTEGER NOT NULL,created TEXT NOT NULL);',
             'CREATE TABLE IF NOT EXISTS operations(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,actor TEXT NOT NULL,group_id TEXT NOT NULL,before_tree TEXT NOT NULL,after_tree TEXT NOT NULL,created TEXT NOT NULL);',

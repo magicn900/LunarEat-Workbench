@@ -49,6 +49,23 @@ it('发布固定版本、读取与丢弃实际闭环', async () => {
     const preview = await send('versions', { action: 'discard-preview', review: draftReview.review, targets: [{ id: 'frost' }] }); expect(preview.targetCount).toBe(1); expect(preview.complete).toBe(true);
     const discarded = await send('versions', { action: 'discard', plan: preview.plan, taskId, requestId: randomUUID() }); expect(discarded.status).toBe(200); expect((tree().frost as any).fields.cost).toBe(7);
 });
+it('Agent 可发现并撤回本人发布，重试幂等，文案恢复且可重新发布', async () => {
+    expect((await write([{ type: 'field', id: 'frost', key: 'cost', expected: 2, value: 17 }])).status).toBe(200);
+    const review = await send('versions', { action: 'review' });
+    const published = await send('versions', { action: 'publish', taskId, requestId: randomUUID(), review: review.review, title: 'withdraw test', description: 'preserved description' });
+    expect(published.status).toBe(200);
+    expect((await send('versions', {action:'inspect',id:published.id})).withdrawalBlocker).toBeNull();
+    const input={action:'withdraw',id:published.id,revision:published.revision,taskId,requestId:randomUUID()};
+    expect((await send('versions',input)).status).toBe(200);
+    expect((await send('versions',input)).replayed).toBe(true);
+    expect((await send('versions',{action:'inspect',id:published.id})).status).toBe(404);
+    const restored=await send('versions',{action:'review'});
+    expect(restored.publicationDraft).toEqual({title:'withdraw test',description:'preserved description'});
+    expect(restored.main).toBe(published.old_main);
+    const republished=await send('versions',{action:'publish',taskId,requestId:randomUUID(),review:restored.review,...restored.publicationDraft});
+    expect(republished.status).toBe(200);
+    expect((await send('versions',{action:'review'})).publicationDraft).toBeUndefined();
+});
 beforeEach(() => {
     store.db.prepare('UPDATE workspaces SET head=? WHERE id=?').run(initialHead, service.workspace(human).id);
     token = issueToken(store, human, 'isolated test', ['workspace.read','workspace.write','design.publish','inspiration.read','inspiration.write']).token; agent = actorFor(store, token, true, 'demo');

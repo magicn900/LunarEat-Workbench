@@ -39,6 +39,7 @@ export const agentSchemas = {
         z.strictObject({ action: z.literal('inspect'), id: id.optional(), objectId: id.optional(), ...versionBase }),
         z.strictObject({ action: z.literal('confirmations'), id: id.optional(), ...versionBase }),
         z.strictObject({ action: z.literal('review'), ...versionBase }),
+        z.strictObject({ action: z.literal('withdraw'), ...controlFields, requestId, id, revision: id }),
         z.strictObject({ action: z.literal('publish'), ...controlFields, requestId, review: reference, title: z.string().min(1).max(200), description: z.string().max(20000).default('') }),
         z.strictObject({ action: z.literal('refresh'), ...controlFields, requestId, review: reference, resolutions: z.record(z.string(), z.enum(['ours','theirs'])).optional() }),
         z.strictObject({ action: z.literal('discard-preview'), review: reference, targets: z.array(z.strictObject({ id, key: z.string().optional() })).min(1).max(500) }),
@@ -64,7 +65,7 @@ export const agentDescriptions: Record<AgentCommand, string> = {
     connect: 'Verify identity, source and capabilities without reading design bodies.', schema: 'Discover exact input contracts and entity definitions; no guessing.',
     find: 'Locate by exact title/path or explicit full text; metadata and requested fields only.', read: 'Read selected entities, schemas, sections or a bounded field range at a fixed source.',
     query: 'Typed collection or saved-view query with projection, stable pagination and optional frozen selection.', edit: 'Atomic conditional changes; preview destructive impact; verify persisted fields and actual view results.',
-    history: 'Filtered history summaries, one diff, safe undo/redo.', versions: 'Bounded publication/review context, fixed revisions, explicit publish/discard/refresh/sync.',
+    history: 'Filtered history summaries, one diff, safe undo/redo.', versions: 'Bounded publication/review context, fixed revisions, explicit publish/withdraw/discard/refresh/sync.',
     control: 'Inspect control, release an owned task, or explicitly resume; never silently reacquire.', inspiration: 'Explicit, separately authorized shared inspiration; never merged with design search.'
 };
 export function describeAgentCommand(name: string): unknown {

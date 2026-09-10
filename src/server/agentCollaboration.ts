@@ -50,6 +50,10 @@ export class AgentCollaboration {
     }
     versions(actor: Actor, input: any, prepared?: PreparedPublication) {
         requireScope(actor, 'workspace.read');
+        if (input.action === 'withdraw') {
+            requireScope(actor, 'workspace.write'); requireScope(actor, 'design.publish');
+            return this.edits.execute(actor, 'versions', input, () => this.service.withdraw(actor, input), true, false);
+        }
         if (input.action === 'sync') {
             requireScope(actor, 'design.sync');
             return this.edits.execute(actor, 'versions', input, () => this.service.confirm(actor, { ...input, requestId: this.edits.requestKey(actor, input) }), false);
@@ -79,16 +83,16 @@ export class AgentCollaboration {
             const review = this.context.save(actor, 'review', { head: preview.head, base: preview.base, main: preview.main });
             const baseTree = (this.service.store.db.prepare('SELECT tree FROM revisions WHERE id=? AND project_id=?').get(preview.base, actor.projectId) as { tree: string }).tree;
             const mainTree = (this.service.store.db.prepare('SELECT tree FROM revisions WHERE id=? AND project_id=?').get(preview.main, actor.projectId) as { tree: string }).tree;
-            return this.context.page(actor, input, this.differences(this.service.revisionTree(actor, preview.base), preview.ours), { review, head: preview.head, base: preview.base, main: preview.main, conflicts: preview.conflicts.slice(0, 10), conflictsComplete: preview.conflicts.length <= 10, diagnostics: preview.diagnostics.slice(0, 10), diagnosticsComplete: preview.diagnostics.length <= 10, sources: { base: this.treeRef(actor, baseTree, preview.base), draft: this.treeRef(actor, preview.head), main: this.treeRef(actor, mainTree, preview.main) } }, 'versions:review');
+            return this.context.page(actor, input, this.differences(this.service.revisionTree(actor, preview.base), preview.ours), { review, publicationDraft: preview.publicationDraft, head: preview.head, base: preview.base, main: preview.main, conflicts: preview.conflicts.slice(0, 10), conflictsComplete: preview.conflicts.length <= 10, diagnostics: preview.diagnostics.slice(0, 10), diagnosticsComplete: preview.diagnostics.length <= 10, sources: { base: this.treeRef(actor, baseTree, preview.base), draft: this.treeRef(actor, preview.head), main: this.treeRef(actor, mainTree, preview.main) } }, 'versions:review');
         }
         const rows = this.service.store.db.prepare("SELECT * FROM publications WHERE project_id=? AND state='done' ORDER BY rowid DESC").all(actor.projectId) as any[];
         if (['inspect','confirmations'].includes(input.action)) {
             const row = rows.find(row => row.id === input.id);
             if (!row) agentFault('PUBLICATION_NOT_FOUND', 'Publication not found.', 'list_versions', 404);
             if (input.action === 'confirmations') return this.context.page(actor, input, this.service.store.db.prepare('SELECT repository,commit_id,note,actor,active,created FROM confirmations WHERE publication_id=? ORDER BY rowid DESC').all(row.id), { id: row.id }, 'versions:confirmations');
-            return this.context.page(actor, input, this.differences(this.service.revisionTree(actor, row.old_main), this.service.store.tree(row.tree), input.objectId), { id: row.id, title: row.title, beforeRevision: row.old_main, revision: row.revision, confirmations: { action: 'confirmations', id: row.id } }, 'versions:inspect');
+            return this.context.page(actor, input, this.differences(this.service.revisionTree(actor, row.old_main), this.service.store.tree(row.tree), input.objectId), { id: row.id, title: row.title, description: row.description, withdrawalBlocker: this.service.withdrawalBlocker(actor, row), beforeRevision: row.old_main, revision: row.revision, confirmations: { action: 'confirmations', id: row.id } }, 'versions:inspect');
         }
-        return this.context.page(actor, input, rows.map(row => ({ id: row.id, title: row.title.slice(0, 200), revision: row.revision, created: row.created, actor: JSON.parse(row.actor), synchronized: !!this.service.store.db.prepare('SELECT 1 FROM confirmations WHERE publication_id=? AND active=1 LIMIT 1').get(row.id), next: { action: 'inspect', id: row.id } })), {}, 'versions:list');
+        return this.context.page(actor, input, rows.map(row => ({ withdrawalBlocker: this.service.withdrawalBlocker(actor, row), id: row.id, title: row.title.slice(0, 200), revision: row.revision, created: row.created, actor: JSON.parse(row.actor), synchronized: !!this.service.store.db.prepare('SELECT 1 FROM confirmations WHERE publication_id=? AND active=1 LIMIT 1').get(row.id), next: { action: 'inspect', id: row.id } })), {}, 'versions:list');
     }
     inspiration(actor: Actor, input: any) {
         if (input.action === 'write') {

@@ -87,7 +87,7 @@ async function main() {
   let payload = flags['--json'] ? JSON.parse(flags['--json']) : flags['--input'] ? read(flags['--input'] === '-' ? 0 : resolve(flags['--input'])) : {};
   if (flags['--query']) payload.query = flags['--query'];
   if (['release','resume'].includes(command)) payload.action = command === 'release' ? 'release' : 'request';
-  const controlled = command === 'edit' && payload.mode !== 'preview' || command === 'history' && ['undo','redo'].includes(payload.action) || command === 'versions' && ['publish','refresh','discard'].includes(payload.action) || command === 'inspiration' && payload.action === 'promote' || ['release','resume'].includes(command) || command === 'control' && ['release','request'].includes(payload.action);
+  const controlled = command === 'edit' && payload.mode !== 'preview' || command === 'history' && ['undo','redo'].includes(payload.action) || command === 'versions' && ['publish','refresh','discard','withdraw'].includes(payload.action) || command === 'inspiration' && payload.action === 'promote' || ['release','resume'].includes(command) || command === 'control' && ['release','request'].includes(payload.action);
   const mutation = controlled || command === 'versions' && payload.action === 'sync' || command === 'inspiration' && payload.action === 'write';
   const taskRequired = controlled || mutation;
   const releasing = command === 'release' || command === 'control' && payload.action === 'release';

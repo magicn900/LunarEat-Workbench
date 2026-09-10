@@ -12,7 +12,7 @@ export function Publish({ onClose }: { onClose: () => void }) {
     const [preview, setPreview] = useState<any>(null), [title, setTitle] = useState(''), [description, setDescription] = useState(''), [choices, setChoices] = useState<Record<string, string>>({});
     const [busy, setBusy] = useState(false), [error, setError] = useState(''), [plan, setPlan] = useState<any>(null), [undoGroup, setUndoGroup] = useState('');
     const load = async () => { const next = await api('/publish/preview'); setPreview(next); setChoices({}); };
-    useEffect(() => { void load().catch(error => setError(error.message)); }, []);
+    useEffect(() => { void api('/publish/preview').then(next => { setPreview(next); setTitle(next.publicationDraft?.title || ''); setDescription(next.publicationDraft?.description || ''); }).catch(error => setError(error.message)); }, []);
     const stale = preview && (snapshot?.workspace.head !== preview.head || snapshot?.workspace.base !== preview.base || snapshot?.main !== preview.main);
     const perform = async (action: () => Promise<void>) => { setBusy(true); setError(''); try { await action(); } catch (error: any) { setError(error.message + (Array.isArray(error.details) ? '：' + error.details.join('；') : '')); } finally { setBusy(false); } };
     const disabled = busy || locked();

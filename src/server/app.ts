@@ -123,6 +123,12 @@ export async function createApp(service: Service, webRoot = 'dist') {
     });
     app.post('/api/workspace/refresh', async (request) => controlled(request,current => service.refresh(current, z.object({ requestId, head: z.string(), main: z.string(), resolutions: z.record(z.string(), z.enum(['ours', 'theirs'])).optional() }).parse(request.body))));
     app.get('/api/changes', async (request) => service.changes(actor(request)));
+    app.post('/api/changes/withdraw', async request => {
+        const input = z.object({ id: z.string().min(1), revision: z.string().min(1) }).parse(request.body);
+        const current = actor(request);
+        const control = z.object({ taskId: z.string().optional(), writeSessionId: z.string().optional() }).parse(request.body);
+        return service.execute(current, control, () => service.withdraw(current, input), false);
+    });
     app.post('/api/changes/confirm', async (request) => service.confirm(actor(request), z.object({ requestId, ids: z.array(z.string()).min(1), repository: z.string().min(1), commit: z.string().min(1), note: z.string().min(1), active: z.boolean() }).parse(request.body)));
     app.get('/api/inspiration', async (request) => service.notes(actor(request), z.object({ q: z.string().default('') }).parse(request.query).q));
     app.post('/api/inspiration', async (request) => service.note(actor(request), z.object({ requestId, id: z.string().optional(), version: z.number().int().optional(), title: z.string().max(200), body: z.string().max(200000), tags: z.array(z.string()).max(30), remove: z.boolean().optional() }).parse(request.body)));

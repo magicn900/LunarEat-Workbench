@@ -9,7 +9,7 @@ if (!token)
 const server = new McpServer({ name: 'design-workbench', version: '1.0.0' });
 let taskId = randomUUID(), writeSessionId: string | undefined;
 let interrupted = false;
-const writePaths = new Set(['/api/workspace/discard','/api/workspace/operations','/api/workspace/undo','/api/workspace/history-step','/api/workspace/refresh','/api/publish','/api/inspiration/promote']);
+const writePaths = new Set(['/api/workspace/discard','/api/workspace/operations','/api/workspace/undo','/api/workspace/history-step','/api/workspace/refresh','/api/publish','/api/changes/withdraw','/api/inspiration/promote']);
 async function request(path: string, body?: unknown) {
     const response = await fetch(base + path,{method:body ? 'POST':'GET',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:body ? JSON.stringify(body):undefined});
     return {ok:response.ok,result:await response.json()};
@@ -47,6 +47,7 @@ server.registerTool('workspace_history', { description: '读取人类与 Agent �
 server.registerTool('workspace_undo', { description: '安全撤销变更组，有后续冲突时拒绝覆盖。', inputSchema: { requestId: z.string(), groupId: z.string() } }, input => call('/api/workspace/undo', input));
 server.registerTool('design_preview', { description: '读取发布差异及 main 合并冲突。', inputSchema: {} }, () => call('/api/publish/preview'));
 const discardInput = { head: z.string(), base: z.string(), main: z.string(), targets: z.array(z.object({ id: z.string(), key: z.string().optional() })).min(1).max(500) };
+server.registerTool('design_withdraw', { description: '仅在用户明确要求时，将本人最新发布撤回草稿。先检查 design_changes 的 withdrawalBlocker（null 才可撤回）及 revision；不能有依赖工作区、同步历史或新草稿修改。删除发布记录，保留草稿内容、名称和简介。受写入控制保护，完成后释放控制权。', inputSchema: { id: z.string(), revision: z.string() } }, input => call('/api/changes/withdraw', input));
 server.registerTool('workspace_discard_preview', { description: '先读取 design_preview 的 review，选择差异 key 或省略 key 丢弃整个文件。预览关联影响，不写入；检查返回 targets、dependencies 和 issues。', inputSchema: discardInput }, input => call('/api/workspace/discard-preview', input));
 server.registerTool('workspace_discard', { description: '按已检查的预览 targets 丢弃草稿修改，恢复草稿基线而非覆盖最新 main。必须明确同意关联范围；受写入会话保护且可撤销。仅取得控制权不会改变预览，其他修改后须重新预览。', inputSchema: { ...discardInput, requestId: z.string() } }, input => call('/api/workspace/discard', input));
 server.registerTool('design_publish', { description: '直接发布预览过的设计，不经过审批；需 design.publish 权限。', inputSchema: { requestId: z.string(), head: z.string(), main: z.string(), title: z.string(), description: z.string() } }, input => call('/api/publish', input));

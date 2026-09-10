@@ -92,6 +92,21 @@ it('导出 ZIP 使用相对图片引用，原图与 Markdown 一起打包', asyn
     expect(Buffer.from(files['images/' + asset.id + '.webp'])).toEqual(bytes);
     expect(strFromU8(files['document.md'])).not.toContain('/api/projects/');
 });
+it('撤回后新增图片恢复私有，历史正式版图片仍可读取', async () => {
+    const owner=actor(), other=actor(otherCookie);
+    const asset=(await upload(await image('png','#129876'))).json();
+    const entity={id:'withdraw-image',kind:'object' as const,path:'设计/withdraw-image.md',title:'撤回图片',collection:null,fields:{},body:'![]('+asset.url+')'};
+    service.execute(owner,{},()=>service.mutate(owner,randomUUID(),[{type:'put',entity,expected:null}]));
+    const preview=service.preview(owner);
+    const publication=service.publish(owner,{requestId:randomUUID(),head:preview.head,main:preview.main,title:'撤回图片测试',description:''}) as any;
+    expect(readableAsset(store,other,asset.id).published).toBe(1);
+    const retained=store.db.prepare('SELECT id FROM image_assets WHERE project_id=? AND published=1 AND id!=? LIMIT 1').get('demo',asset.id) as {id:string};
+    expect(retained).toBeTruthy();
+    service.execute(owner,{},()=>service.withdraw(owner,{id:publication.id,revision:publication.revision}),false);
+    expect(readableAsset(store,owner,asset.id).published).toBe(0);
+    expect(()=>readableAsset(store,other,asset.id)).toThrow();
+    expect(readableAsset(store,other,retained.id).published).toBe(1);
+});
 it('导出预检保留权限与大小检查，缺失附件返回可读错误并释放名额', async () => {
     const owner = actor(), bytes = await image('png', '#123abc'), asset = (await upload(bytes)).json();
     const entity = { id: 'export-preflight', kind: 'object' as const, path: '设计/preflight.md', title: '预检', collection: null, fields: {}, body: '![](' + asset.url + ')\n\n![](' + asset.url + ')' };

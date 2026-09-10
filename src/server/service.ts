@@ -1,5 +1,5 @@
 import { applyMutationOperation, prepareMutation } from './mutations.js';
-import { checkPublicationAssets, publishAssets } from './assets.js';
+import { checkPublicationAssets, publishAssets, referencedAssets } from './assets.js';
 import { projectState, writableProject } from './projectState.js';
 import { createHmac, randomUUID } from 'node:crypto';
 import { BoundedCache } from './cache.js';
@@ -300,7 +300,8 @@ const workspace = this.workspace(actor), entity = this.store.entity(workspace.he
         const workspace = this.workspace(actor), main = this.store.main(actor.projectId), base = this.revisionTree(actor, workspace.base), ours = this.store.tree(workspace.head), theirs = this.revisionTree(actor, main), merged = mergeTrees(base, ours, theirs);
         const differences = diffTrees(base, ours);
         const raw = [...new Set(differences.map(item => item.id))].map(id => ({ id, title: (ours[id] || base[id]).path, kind: '文件', property: '原始文本', before: base[id] ? serialize(base[id]) : '', after: ours[id] ? serialize(ours[id]) : '' }));
-        return { head: workspace.head, main, base: workspace.base, raw, diff: differences, review: reviewChanges(base, ours), conflicts: merged.conflicts, diagnostics: diagnostics(merged.tree, true), candidate: merged.tree, theirs, ours };
+        const publicationDraft = this.store.db.prepare('SELECT title,description FROM publication_drafts WHERE workspace_id=?').get(workspace.id);
+        return { head: workspace.head, main, base: workspace.base, publicationDraft, raw, diff: differences, review: reviewChanges(base, ours), conflicts: merged.conflicts, diagnostics: diagnostics(merged.tree, true), candidate: merged.tree, theirs, ours };
     }
     discardPreview(actor: Actor, input: { head: string; base: string; main: string; targets: DiscardTarget[] }) {
         requireScope(actor, 'workspace.read');
@@ -449,13 +450,60 @@ const workspace = this.workspace(actor), entity = this.store.entity(workspace.he
             publishAssets(this.store, this.codec, row.project_id, this.store.tree(row.tree));
             this.store.db.prepare('UPDATE workspaces SET base=?,head=?,version=version+1 WHERE id=?').run(row.revision, row.tree, row.workspace_id);
             this.store.db.prepare("UPDATE publications SET state='done' WHERE id=?").run(id);
+            this.store.db.prepare('DELETE FROM publication_drafts WHERE workspace_id=?').run(row.workspace_id);
             const documents = this.store.db.prepare('SELECT entity_id FROM documents WHERE workspace_id=?').all(row.workspace_id) as { entity_id: string }[];
             for (const document of documents) this.syncDocument(row.workspace_id, document.entity_id, this.store.entity(row.tree, document.entity_id), 'publish');
             this.store.emit(row.project_id, row.workspace_id, 'workspace', { published: row.revision });
             this.store.emit(row.project_id, null, 'publication', { id, revision: row.revision });
         })();
     }
-    recover() { for (const row of this.store.db.prepare("SELECT * FROM publications WHERE state='prepared'").all() as any[]) {
+    withdrawalBlocker(actor: Actor, row: any): string | null {
+        const workspace = this.store.db.prepare('SELECT * FROM workspaces WHERE id=?').get(row.workspace_id) as any;
+        if (!workspace || workspace.user_id !== actor.userId) return '仅发布者本人可以撤回';
+        if (!actor.scopes.includes('design.publish') || !actor.scopes.includes('workspace.write')) return '没有撤回权限';
+        if (row.state !== 'done' || this.store.main(actor.projectId) !== row.revision) return '只能撤回最新正式发布';
+        if (this.preparing.has(actor.projectId) || this.store.db.prepare("SELECT 1 FROM publications WHERE project_id=? AND state!='done'").get(actor.projectId)) return '正在处理发布，请稍后重试';
+        if (this.store.db.prepare('SELECT 1 FROM workspaces WHERE project_id=? AND base=? AND id!=?').get(actor.projectId, row.revision, workspace.id) || this.store.db.prepare('SELECT 1 FROM revisions WHERE project_id=? AND parent=?').get(actor.projectId, row.revision)) return '已有工作区或后续版本基于此发布';
+        if (this.store.db.prepare('SELECT 1 FROM confirmations WHERE publication_id=?').get(row.id)) return '此发布已有实现同步记录，不能撤回';
+        if (workspace.base !== row.revision || workspace.head !== row.tree) return '发布后已有草稿修改，不能撤回';
+        return null;
+    }
+    withdraw(actor: Actor, input: { id: string; revision: string }) {
+        writableProject(this.store, actor.projectId);
+        requireScope(actor, 'workspace.write');
+        requireScope(actor, 'design.publish');
+        const row = this.store.db.prepare('SELECT * FROM publications WHERE id=? AND project_id=?').get(input.id, actor.projectId) as any;
+        if (!row) throw new Fault(404, '发布记录不存在');
+        if (row.revision !== input.revision) throw new Fault(409, '发布记录已更新，请刷新');
+        const blocker = this.withdrawalBlocker(actor, row);
+        if (blocker) throw new Fault(409, blocker);
+        this.store.db.prepare("UPDATE publications SET state='withdrawing' WHERE id=?").run(row.id);
+        this.finishWithdrawal(row);
+        return { ok: true };
+    }
+    private finishWithdrawal(row: any) {
+        const main = this.store.main(row.project_id);
+        if (main === row.revision) this.store.git(row.project_id, ['update-ref', 'refs/heads/main', row.old_main, row.revision]);
+        else if (main !== row.old_main) throw new Error('撤回恢复失败：main 被外部修改，停止写入');
+        this.store.db.transaction(() => {
+            this.store.db.prepare('INSERT OR REPLACE INTO publication_drafts VALUES (?,?,?)').run(row.workspace_id, row.title, row.description);
+            this.store.db.prepare('UPDATE workspaces SET base=?,version=version+1 WHERE id=?').run(row.old_main, row.workspace_id);
+            this.store.db.prepare('DELETE FROM publications WHERE id=?').run(row.id);
+            this.store.db.prepare('DELETE FROM revisions WHERE id=? AND project_id=?').run(row.revision, row.project_id);
+            const retainedAssets = new Set<string>();
+            for (const revision of this.store.db.prepare('SELECT DISTINCT tree FROM revisions WHERE project_id=?').all(row.project_id) as { tree: string }[]) {
+                for (const asset of referencedAssets(this.codec, this.store.tree(revision.tree))) if (asset.projectId === row.project_id) retainedAssets.add(asset.id);
+            }
+            for (const asset of referencedAssets(this.codec, this.store.tree(row.tree))) {
+                if (asset.projectId === row.project_id && !retainedAssets.has(asset.id)) this.store.db.prepare('UPDATE image_assets SET published=0 WHERE id=? AND project_id=?').run(asset.id, row.project_id);
+            }
+            this.store.emit(row.project_id, row.workspace_id, 'workspace', {});
+            this.store.emit(row.project_id, null, 'publication', {});
+        })();
+    }
+    recover() {
+        for (const row of this.store.db.prepare("SELECT * FROM publications WHERE state='withdrawing'").all() as any[]) this.finishWithdrawal(row);
+        for (const row of this.store.db.prepare("SELECT * FROM publications WHERE state='prepared'").all() as any[]) {
         const main = this.store.main(row.project_id);
         if (main === row.old_main)
             this.store.git(row.project_id, ['update-ref', 'refs/heads/main', row.revision, row.old_main]);
@@ -468,7 +516,7 @@ const workspace = this.workspace(actor), entity = this.store.entity(workspace.he
         return (this.store.db.prepare("SELECT * FROM publications WHERE project_id=? AND state='done' ORDER BY rowid DESC").all(actor.projectId) as any[]).map(row => {
             const previous = this.store.db.prepare('SELECT tree FROM revisions WHERE id=? AND project_id=?').get(row.old_main, actor.projectId) as { tree: string } | undefined;
             if (!previous) throw new Fault(404, '正式版本不存在');
-            return { ...row, actor: JSON.parse(row.actor), ...this.describeChange(previous.tree, row.tree), confirmations: (this.store.db.prepare('SELECT * FROM confirmations WHERE publication_id=? ORDER BY rowid DESC').all(row.id) as any[]).map(item => ({ ...item, actor: JSON.parse(item.actor) })) };
+            return { ...row, withdrawalBlocker: this.withdrawalBlocker(actor, row), actor: JSON.parse(row.actor), ...this.describeChange(previous.tree, row.tree), confirmations: (this.store.db.prepare('SELECT * FROM confirmations WHERE publication_id=? ORDER BY rowid DESC').all(row.id) as any[]).map(item => ({ ...item, actor: JSON.parse(item.actor) })) };
         });
     }
     confirm(actor: Actor, input: {

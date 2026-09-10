@@ -2,13 +2,15 @@ import { randomUUID } from './uuid';
 import { t } from './i18n';
 import { useEffect, useState } from 'react';
 import { BookOpen, CheckCircle2, Clock3, ChevronLeft, Search } from 'lucide-react';
-import { api, notify } from './state';
+import { api, notify, reload } from './state';
+import { flushEditing, locked } from './editing';
 import { Modal } from './Modal';
 import { ReviewBrowser } from './ReviewBrowser';
 const pendingLabel = '待同步至实现', confirmedLabel = '已确认同步至实现';
 const synced = (change: any) => change.confirmations.some((record: any) => record.active);
 const timestamp = (value: string) => new Date(value).toLocaleString();
 export function Changes({ canSync }: { canSync: boolean }) {
+    const [withdrawing, setWithdrawing] = useState<any>(null), [withdrawBusy, setWithdrawBusy] = useState(false), [withdrawError, setWithdrawError] = useState('');
     const [changes, setChanges] = useState<any[]>([]), [filter, setFilter] = useState('all'), [query, setQuery] = useState(''), [selected, setSelected] = useState('');
     const [batch, setBatch] = useState(false), [selection, setSelection] = useState<string[]>([]), [confirming, setConfirming] = useState<any[] | null>(null), [revoking, setRevoking] = useState<any>(null), [error, setError] = useState(''), [mobileDetail, setMobileDetail] = useState(false);
     const load = async () => { try { const next = await api('/changes'); setChanges(next); setSelection(current => current.filter(id => next.some((change: any) => change.id === id && !synced(change)))); setError(''); } catch (error: any) { setError(error.message); } };
@@ -27,6 +29,8 @@ export function Changes({ canSync }: { canSync: boolean }) {
             <section className="implementation-record"><header><h3>{t("实现进度")}</h3>{canSync && !confirmation && <button className="primary" onClick={() => setConfirming([current])}>{t("确认已同步至实现")}</button>}</header>{confirmation ? <><p className="implementation-confirmed"><CheckCircle2 size={17}/>{t(confirmedLabel)}</p><p>{t("由")} {confirmation.actor.username}{t("确认 ·")} {timestamp(confirmation.created)}</p><p>{confirmation.note}</p>{canSync && <button onClick={() => setRevoking(current)}>{t("重新标记为待同步至实现")}</button>}</> : <><p><Clock3 size={16}/> {t(pendingLabel)}</p><p className="muted">{t("这份正式设计还没有实现同步确认；不代表它一定需要修改代码。")}</p>{current.confirmations[0] && <p>{t("最近记录：")}{current.confirmations[0].note} · {current.confirmations[0].actor.username}</p>}</>}</section>
             <details className="release-technical"><summary>{t("版本与实现记录")}</summary><p>{t("设计版本")} <code>{current.revision}</code></p>{current.confirmations.map((record: any) => <section key={record.id}><strong>{record.actor.username} · {timestamp(record.created)}</strong><p>{record.note}</p><p>{t("实现版本")} <code>{record.repository} @ {record.commit_id}</code></p></section>)}<small>{t("当前状态以“实现进度”为准；历史记录保留。")}</small></details></article>
         </div>}
+        {current?.withdrawalBlocker === null && <button disabled={locked()} onClick={() => { setWithdrawError(''); setWithdrawing(current); }}>{t('撤回到草稿')}</button>}
+        {withdrawing && <Modal title={t('撤回到草稿')} onClose={() => setWithdrawing(null)} busy={withdrawBusy}><h3>{withdrawing.title}</h3><p>{t('团队正式版本将回到上一版，本次发布记录将删除。内容恢复为你的草稿，保留名称和简介。')}</p>{withdrawError && <p role="alert">{t(withdrawError)}</p>}<button disabled={withdrawBusy} onClick={() => setWithdrawing(null)}>{t('取消')}</button><button className="danger" disabled={withdrawBusy || locked()} onClick={async () => { setWithdrawBusy(true); setWithdrawError(''); try { await flushEditing(); await api('/changes/withdraw', { id: withdrawing.id, revision: withdrawing.revision }); setWithdrawing(null); await reload(); await load(); notify(t('已撤回到草稿，名称和简介已保留')); } catch (error: any) { setWithdrawError(error.message); await load(); } finally { setWithdrawBusy(false); } }}>{t('确认撤回')}</button></Modal>}
         {confirming && <SyncDialog changes={confirming} onClose={() => setConfirming(null)} onDone={async () => { setConfirming(null); setSelection([]); await load(); }}/>} {revoking && <SyncDialog changes={[revoking]} revoke onClose={() => setRevoking(null)} onDone={async () => { setRevoking(null); await load(); }}/>} 
     </div>;
 }
