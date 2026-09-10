@@ -1,8 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdirSync, existsSync, openSync, writeFileSync, fsyncSync, closeSync, renameSync, readFileSync } from 'node:fs';
+import { mkdirSync, existsSync, openSync, writeFileSync, fsyncSync, closeSync, renameSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { zipSync, strToU8 } from 'fflate';
+import { strToU8 } from 'fflate';
+import { streamZip } from './zipStream.js';
 import { Transform } from '@milkdown/prose/transform';
 import type { Store } from './store.js';
 import type { Service } from './service.js';
@@ -66,12 +68,12 @@ export function checkPublicationAssets(store: Store, codec: Codec, actor: Actor,
 export function publishAssets(store: Store, codec: Codec, projectId: string, tree: Tree) {
     for (const reference of referencedAssets(codec, tree)) if (reference.projectId === projectId) store.db.prepare('UPDATE image_assets SET published=1 WHERE id=? AND project_id=?').run(reference.id, projectId);
 }
-export function exportDocumentImages(service: Service, actor: Actor, documentId: string) {
+export async function exportDocumentImages(service: Service, actor: Actor, documentId: string, signal?: AbortSignal) {
     requireScope(actor, 'workspace.read');
     const entity = service.store.entity(service.workspace(actor).head, documentId);
     if (entity?.kind !== 'object') throw new Fault(404, '文档不存在');
     const transform = new Transform(service.codec.parse(entity.body));
-    const files: Record<string, Uint8Array> = {};
+    const files = new Map<string, Asset>();
     let size = 0;
     transform.doc.descendants((node, position) => {
         if (node.type.name !== 'image') return;
@@ -80,13 +82,23 @@ export function exportDocumentImages(service: Service, actor: Actor, documentId:
         if (reference.projectId !== actor.projectId) throw new Fault(409, '请先将跨项目图片上传到当前项目');
         const asset = readableAsset(service.store, actor, reference.id);
         const filename = 'images/' + asset.id + '.' + asset.extension;
-        if (!files[filename]) {
+        if (!files.has(filename)) {
             size += asset.size;
             if (size > 50 * 1024 * 1024) throw new Fault(413, '单次图片导出不能超过 50 MB');
-            files[filename] = readFileSync(assetPath(service.store, asset));
+            files.set(filename, asset);
         }
         transform.setNodeMarkup(position, undefined, { ...node.attrs, src: filename });
     });
-    files['document.md'] = strToU8(serialize({ ...entity, body: service.codec.serialize(transform.doc) }));
-    return Buffer.from(zipSync(files, { level: 0 }));
+    const entries: { name: string; source: string | Uint8Array }[] = [];
+    for (const [name, asset] of files) {
+        signal?.throwIfAborted();
+        const source = assetPath(service.store, asset);
+        let info;
+        try { info = await stat(source); } catch { throw new Fault(409, '图片附件不可用，请联系管理员检查存储'); }
+        if (!info.isFile() || info.size !== asset.size) throw new Fault(409, '图片附件不可用，请联系管理员检查存储');
+        entries.push({ name, source });
+    }
+    signal?.throwIfAborted();
+    entries.push({ name: 'document.md', source: strToU8(serialize({ ...entity, body: service.codec.serialize(transform.doc) })) });
+    return streamZip(entries, signal);
 }

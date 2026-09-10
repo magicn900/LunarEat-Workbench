@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, it, expect } from 'vitest';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -13,6 +13,7 @@ import { seed } from '../src/server/seed';
 import { actorFor } from '../src/server/auth';
 import { initializeProject } from '../src/server/projectState';
 import { imageUploadLimit } from '../src/shared/assets';
+import { assetPath, readableAsset } from '../src/server/assets';
 
 let directory: string, store: Store, codec: Codec, service: Service, app: Awaited<ReturnType<typeof createApp>>, cookie: string, otherCookie: string;
 const headers = (session = cookie) => ({ cookie: session, 'x-workbench-client': 'test', 'content-type': 'application/octet-stream' });
@@ -90,4 +91,23 @@ it('导出 ZIP 使用相对图片引用，原图与 Markdown 一起打包', asyn
     expect(strFromU8(files['document.md'])).toContain('images/' + asset.id + '.webp');
     expect(Buffer.from(files['images/' + asset.id + '.webp'])).toEqual(bytes);
     expect(strFromU8(files['document.md'])).not.toContain('/api/projects/');
+});
+it('导出预检保留权限与大小检查，缺失附件返回可读错误并释放名额', async () => {
+    const owner = actor(), bytes = await image('png', '#123abc'), asset = (await upload(bytes)).json();
+    const entity = { id: 'export-preflight', kind: 'object' as const, path: '设计/preflight.md', title: '预检', collection: null, fields: {}, body: '![](' + asset.url + ')\n\n![](' + asset.url + ')' };
+    for (const current of [owner, actor(otherCookie)]) service.execute(current, {}, () => service.mutate(current, randomUUID(), [{ type: 'put', expected: null, entity }]));
+    const url = '/api/projects/demo/documents/export-preflight/export-images';
+    expect((await app.inject({ url, headers: { cookie: otherCookie } })).statusCode).toBe(404);
+    store.db.prepare('UPDATE image_assets SET size=? WHERE id=?').run(51 * 1024 * 1024, asset.id);
+    try { expect((await app.inject({ url, headers: { cookie } })).statusCode).toBe(413); }
+    finally { store.db.prepare('UPDATE image_assets SET size=? WHERE id=?').run(bytes.length, asset.id); }
+    const path = assetPath(store, readableAsset(store, owner, asset.id)); renameSync(path, path + '.held');
+    try {
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const response = await app.inject({ url, headers: { cookie } });
+            expect(response.statusCode).toBe(409); expect(response.json().error).toContain('图片附件不可用');
+        }
+    } finally { renameSync(path + '.held', path); }
+    const response = await app.inject({ url, headers: { cookie } }); expect(response.statusCode).toBe(200);
+    const files = unzipSync(response.rawPayload); expect(Object.keys(files)).toHaveLength(2);
 });

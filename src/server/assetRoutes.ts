@@ -10,6 +10,13 @@ export function registerAssetRoutes(app: FastifyInstance, service: Service) {
     let uploading = 0;
     const active = new WeakSet<FastifyRequest>();
     const releaseUpload = async (request: FastifyRequest) => { if (active.delete(request)) uploading--; };
+    const exports = new WeakMap<FastifyRequest, AbortController>();
+    let exporting = 0;
+    const releaseExport = async (request: FastifyRequest) => {
+        const controller = exports.get(request);
+        if (!controller) return;
+        exports.delete(request); exporting--; controller.abort();
+    };
     const parameters = z.object({ projectId: z.string().min(1).max(150), documentId: z.string().min(1).max(150).optional(), assetId: z.string().uuid().optional() });
     const actor = (request: FastifyRequest) => {
         const { projectId } = parameters.parse(request.params);
@@ -53,9 +60,23 @@ export function registerAssetRoutes(app: FastifyInstance, service: Service) {
         reply.type(asset.mime).header('Content-Disposition', 'inline; filename="image-' + asset.id + '.' + asset.extension + '"').header('Cross-Origin-Resource-Policy', 'same-origin').header('Content-Security-Policy', "default-src 'none'; sandbox");
         return reply.send(createReadStream(assetPath(service.store, asset)));
     });
-    app.get('/api/projects/:projectId/documents/:documentId/export-images', async (request, reply) => {
+    app.get('/api/projects/:projectId/documents/:documentId/export-images', {
+        onRequest: async (request, reply) => {
+            actor(request);
+            if (exporting >= 2) throw new Fault(429, '图片导出繁忙，请稍后重试');
+            const controller = new AbortController();
+            exports.set(request, controller); exporting++;
+            reply.raw.once('close', () => { void releaseExport(request); });
+        },
+        onResponse: releaseExport,
+        onRequestAbort: releaseExport
+    }, async (request, reply) => {
         const { documentId } = parameters.parse(request.params);
-        const archive = exportDocumentImages(service, actor(request), documentId!);
-        return reply.type('application/zip').header('Content-Disposition', 'attachment; filename="document-with-images.zip"').send(archive);
+        const controller = exports.get(request);
+        if (!controller) return reply;
+        try {
+            const archive = await exportDocumentImages(service, actor(request), documentId!, controller.signal);
+            return reply.type('application/zip').header('Content-Disposition', 'attachment; filename="document-with-images.zip"').send(archive);
+        } catch (error) { if (controller.signal.aborted) return reply; throw error; }
     });
 }

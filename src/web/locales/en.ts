@@ -39,6 +39,8 @@ export const english: Record<string, string> = {
     "文档包含其他项目的图片，请在当前项目重新上传": "The document references images from another project. Upload them to this project first.",
     "请先将跨项目图片上传到当前项目": "Upload cross-project images to this project first.",
     "单次图片导出不能超过 50 MB": "Image exports must not exceed 50 MB.",
+    "图片导出繁忙，请稍后重试": "Image exports are busy. Please try again shortly.",
+    "图片附件不可用，请联系管理员检查存储": "An image attachment is unavailable. Please ask an administrator to check storage.",
     "阅读导航": "Reading navigation",
     "返回上一页": "Back to previous page",
     "前进到下一页": "Forward to next page",
