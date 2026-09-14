@@ -2,7 +2,7 @@ import { WorkspaceIdentity } from './WorkspaceIdentity';
 import { t } from './i18n';
 import { shortcutLabel, useShortcuts } from './shortcuts';
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, Boxes, ChevronDown, ChevronRight, FilePlus2, FolderPlus, LayoutGrid, List, Plus, Search, StickyNote, Table2, X } from 'lucide-react';
+import { ChartNoAxesGantt, BookOpen, Boxes, ChevronDown, ChevronRight, FilePlus2, FolderPlus, LayoutGrid, List, Plus, Search, StickyNote, Table2, X } from 'lucide-react';
 import { type Snapshot, navigate, notify } from './state';
 import { DirectoryTree, createFolder } from './DirectoryTree';
 import { EntityMenuButton } from './CommandSurface';
@@ -66,7 +66,7 @@ export function Sidebar({ snapshot, tab, selected, collectionId, viewId, query, 
     const collections = entities.filter((entity): entity is Collection => entity.kind === 'collection');
     const pages = entities.filter(entity => entity.kind === 'folder' || entity.kind === 'object' && !entity.collection).sort((left, right) => left.path.localeCompare(right.path, 'zh-CN'));
     const matching = query.trim() ? entities.filter(entity => entity.kind === 'object' && (entity.title + ' ' + entity.path + ' ' + entity.body + ' ' + JSON.stringify(entity.fields)).toLowerCase().includes(query.trim().toLowerCase())) : [];
-    const shared = [['changes', '发布记录', BookOpen], ['inspiration', '灵感池', StickyNote]] as const;
+    const shared = [['changes', '发布记录', BookOpen], ['schedule', '任务排期', ChartNoAxesGantt], ['inspiration', '灵感池', StickyNote]] as const;
     return <>
         {open && <button className="sidebar-backdrop" aria-label={t("关闭侧栏遮罩")} onClick={onClose}/>}
         <aside ref={sidebar} id="workspace-navigation" className={'sidebar workspace-sidebar' + (open ? ' is-open' : '')} aria-label={t("项目导航")} onKeyDown={event => {
@@ -88,7 +88,7 @@ export function Sidebar({ snapshot, tab, selected, collectionId, viewId, query, 
                     <details className="nav-group" open><summary className="nav-tree-row"><ChevronRight size={13}/><Boxes size={16}/><span>{t("结构化集合")}</span></summary><div className="collection-navigation">{collections.map(collection => <CollectionEntry key={collection.id} collection={collection} views={entities.filter((entity): entity is View => entity.kind === 'view' && entity.collection === collection.id)} isDestination={tab === 'collections'} active={collectionId === collection.id} selectedView={viewId}/>)}{!collections.length && <p className="nav-hint">{t("还没有集合")}</p>}</div></details>
                 </>}
             </div>
-            <div className="shared-navigation"><div className="scope-heading">{t("项目共享")}</div><nav aria-label={t("项目共享")}>{shared.filter(([key]) => key !== 'inspiration' || snapshot.actor.scopes.includes('inspiration.read')).map(([key, label, Icon]) => <button key={key} className={'nav-item' + (tab === key ? ' current' : '')} aria-current={tab === key ? 'page' : undefined} onClick={() => onTab(key)}><Icon size={16}/><span>{t(label)}</span>{key === 'inspiration' && <small>{t("不纳入版本")}</small>}</button>)}</nav></div>
+            <div className="shared-navigation"><div className="scope-heading">{t("项目共享")}</div><nav aria-label={t("项目共享")}>{shared.filter(([key]) => (key !== 'inspiration' || snapshot.actor.scopes.includes('inspiration.read')) && (key !== 'schedule' || snapshot.actor.scopes.includes('schedule.read'))).map(([key, label, Icon]) => <button key={key} className={'nav-item' + (tab === key ? ' current' : '')} aria-current={tab === key ? 'page' : undefined} onClick={() => onTab(key)}><Icon size={16}/><span>{t(label)}</span>{key === 'inspiration' && <small>{t("不纳入版本")}</small>}</button>)}</nav></div>
             <div className="sidebar-utilities"><AccountBar/></div>
         </aside>
     </>;

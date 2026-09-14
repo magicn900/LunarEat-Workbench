@@ -16,6 +16,7 @@ import { requireScope } from './auth.js';
 import { accountAccess } from './auth.js';
 import { registerAdministration } from './administration.js';
 import { registerLifecycle } from './lifecycle.js';
+import { registerSchedule } from './schedule.js';
 import { registerAccountSettings } from './accountSettings.js';
 import { registerAgentKit, agentConnection } from './agentKit.js';
 import { registerAgentCollaboration } from './agentCollaboration.js';
@@ -80,6 +81,7 @@ export async function createApp(service: Service, webRoot = 'dist') {
     app.get('/api/workspace', async request => service.snapshot(actor(request), z.object({ since: z.string().max(200).optional() }).parse(request.query).since));
     registerAdministration(app, store);
     registerLifecycle(app, store);
+    registerSchedule(app, store, actor);
     registerAssetRoutes(app, service);
     registerAccountSettings(app, store);
     app.get('/api/search', async (request) => service.search(actor(request), z.object({ q: z.string().default('') }).parse(request.query).q));

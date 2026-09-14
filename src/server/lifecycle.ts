@@ -37,6 +37,8 @@ export class Lifecycle {
         const tokens = this.store.db.prepare('SELECT id,scopes FROM tokens WHERE ' + (target.kind === 'project' ? 'project_id=?' : target.kind === 'member' ? 'user_id=? AND project_id=?' : 'user_id=?') + ' ORDER BY id').all(...(target.kind === 'member' ? [target.id, projectId] : [target.id]));
         const revisions = target.kind === 'project' ? this.store.db.prepare('SELECT id FROM revisions WHERE project_id=? ORDER BY id').all(target.id) : [];
         const notes = target.kind === 'project' ? this.store.db.prepare('SELECT id,version FROM notes WHERE project_id=? ORDER BY id').all(target.id) : [];
+
+        const scheduledTasks = this.store.db.prepare("SELECT id,version FROM schedule_tasks WHERE " + (target.kind === 'project' ? 'project_id=?' : target.kind === 'member' ? "EXISTS (SELECT 1 FROM json_each(COALESCE(json_extract(data,'$.ownerIds'),json_array(json_extract(data,'$.ownerId')))) WHERE value=?) AND project_id=?" : "EXISTS (SELECT 1 FROM json_each(COALESCE(json_extract(data,'$.ownerIds'),json_array(json_extract(data,'$.ownerId')))) WHERE value=?)") + ' ORDER BY id').all(...(target.kind === 'member' ? [target.id, projectId] : [target.id]));
         const blockers: string[] = [];
         if (activity.sessions.length) blockers.push('存在活动 Agent 写入，请先结束写入或收回控制权');
         if (activity.clients.length) blockers.push('存在未保存的网页输入，请先回到对应页面保存');
@@ -48,8 +50,8 @@ export class Lifecycle {
         if (target.kind === 'project' && !(entity as any).archived) blockers.push('请先归档项目，再删除项目');
         const projects = (members as { project_id: string }[]).map(member => this.store.db.prepare('SELECT id,name FROM projects WHERE id=?').get(member.project_id) as { id: string; name: string });
         const relatedProjects = [...new Map(projects.map(project => [project.id, project])).values()];
-        const detail = { entity, members, tokens, workspaces, activity, revisions, notes, relatedProjects }; 
-        return { ...target, projects: relatedProjects, name: 'username' in entity ? entity.username : entity.name, expected: this.store.hash(JSON.stringify(detail)), counts: { members: members.length, workspaces: workspaces.length, unpublished: workspaces.filter(workspace => workspace.unpublished).length, tokens: tokens.length, revisions: revisions.length, notes: notes.length }, drafts: workspaces.filter(workspace => workspace.unpublished).map(workspace => ({ projectId: workspace.project_id, projectName: workspace.name })), blockers };
+        const detail = { entity, members, tokens, workspaces, activity, revisions, notes, scheduledTasks, relatedProjects };
+        return { ...target, projects: relatedProjects, name: 'username' in entity ? entity.username : entity.name, expected: this.store.hash(JSON.stringify(detail)), counts: { members: members.length, workspaces: workspaces.length, unpublished: workspaces.filter(workspace => workspace.unpublished).length, tokens: tokens.length, revisions: revisions.length, notes: notes.length, scheduledTasks: scheduledTasks.length }, drafts: workspaces.filter(workspace => workspace.unpublished).map(workspace => ({ projectId: workspace.project_id, projectName: workspace.name })), blockers };
     }
     remove(target: Target, current: { id: string; username: string }, name: string, expected: string) {
         return this.store.db.transaction(() => {

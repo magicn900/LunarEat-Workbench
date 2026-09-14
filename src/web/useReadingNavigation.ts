@@ -20,7 +20,7 @@ export function useReadingNavigation(snapshot: Snapshot | null, ready: boolean) 
         let journal: Journal = { entries: [{ route: initialRoute, position: {} }], index: 0, session: randomUUID(), positions: {} };
         try {
             const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
-            if (saved && Array.isArray(saved.entries) && saved.entries.length && Number.isInteger(saved.index) && saved.entries[saved.index] && typeof saved.session === 'string' && saved.entries.every((entry: Entry) => entry.route && typeof entry.route.selected === 'string' && typeof entry.route.selectedCollection === 'string' && ['workspace', 'collections', 'changes', 'inspiration'].includes(entry.route.tab) && entry.position && typeof entry.position === 'object')) journal = saved;
+            if (saved && Array.isArray(saved.entries) && saved.entries.length && Number.isInteger(saved.index) && saved.entries[saved.index] && typeof saved.session === 'string' && saved.entries.every((entry: Entry) => entry.route && typeof entry.route.selected === 'string' && typeof entry.route.selectedCollection === 'string' && ['workspace', 'collections', 'changes', 'schedule', 'inspiration'].includes(entry.route.tab) && entry.position && typeof entry.position === 'object')) journal = saved;
         } catch {}
         journal.positions = journal.positions && typeof journal.positions === 'object' ? journal.positions : {};
         const marker = () => window.history.state?.workbenchReading;

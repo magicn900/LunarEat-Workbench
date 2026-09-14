@@ -38,6 +38,8 @@ export class Store {
             'CREATE TABLE IF NOT EXISTS operations(id TEXT PRIMARY KEY,workspace_id TEXT NOT NULL,actor TEXT NOT NULL,group_id TEXT NOT NULL,before_tree TEXT NOT NULL,after_tree TEXT NOT NULL,created TEXT NOT NULL);',
             'CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY AUTOINCREMENT,workspace_id TEXT,project_id TEXT NOT NULL,kind TEXT NOT NULL,payload TEXT NOT NULL);',
             'CREATE TABLE IF NOT EXISTS requests(key TEXT PRIMARY KEY,result TEXT NOT NULL);',
+            'CREATE TABLE IF NOT EXISTS schedule_tasks(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),version INTEGER NOT NULL,created TEXT NOT NULL,updated TEXT NOT NULL,data TEXT NOT NULL);',
+            'CREATE INDEX IF NOT EXISTS schedule_tasks_project ON schedule_tasks(project_id);',
             'CREATE TABLE IF NOT EXISTS notes(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,title TEXT NOT NULL,body TEXT NOT NULL,tags TEXT NOT NULL,author TEXT NOT NULL,editor TEXT NOT NULL,version INTEGER NOT NULL,created TEXT NOT NULL,updated TEXT NOT NULL);',
             'CREATE TABLE IF NOT EXISTS documents(workspace_id TEXT NOT NULL,entity_id TEXT NOT NULL,version INTEGER NOT NULL,body TEXT NOT NULL,doc TEXT NOT NULL,PRIMARY KEY(workspace_id,entity_id));',
             'CREATE TABLE IF NOT EXISTS steps(workspace_id TEXT NOT NULL,entity_id TEXT NOT NULL,version INTEGER NOT NULL,steps TEXT NOT NULL,client_id TEXT NOT NULL,PRIMARY KEY(workspace_id,entity_id,version));'

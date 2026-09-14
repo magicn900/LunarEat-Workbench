@@ -44,7 +44,7 @@ it('所有管理写接口拒绝普通用户、Agent和跨站请求',async()=>{
 it('归档保留授权和内容，但旧Web与Agent不能编辑、发布、确认同步或写便签；恢复后有效',async()=>{
     await get('/workspace',designer); const before=(await get('/workspace',designer)).json();const actor=actorFor(store,designer.split('=')[1],false,'demo');
     const token=(await post('/tokens',{name:'archived-agent',scopes:['workspace.read','workspace.write','inspiration.write']},designer)).json().token;
-    expect((await archive()).statusCode).toBe(200);const after=(await get('/workspace',designer)).json();expect(after.tree).toEqual(before.tree);expect(after.workspace).toEqual(before.workspace);expect(after.main).toBe(before.main);expect(after.actor.scopes).toEqual(['workspace.read','inspiration.read']);
+    expect((await archive()).statusCode).toBe(200);const after=(await get('/workspace',designer)).json();expect(after.tree).toEqual(before.tree);expect(after.workspace).toEqual(before.workspace);expect(after.main).toBe(before.main);expect(after.actor.scopes).toEqual(['workspace.read','inspiration.read','schedule.read']);
     const entry=Object.values(before.tree)[0] as any;
     const calls:[string,Record<string, unknown>,string][]=[['/workspace/operations',{requestId:randomUUID(),operations:[{type:'delete',id:entry.id,expected:entry}]},designer],['/publish',{requestId:randomUUID(),head:before.workspace.head,main:before.main,title:'归档',description:''},designer],['/inspiration',{requestId:randomUUID(),title:'归档便签',body:'',tags:[]},designer]];
     for(const [path,payload,session] of calls) expect((await post(path,payload,session)).statusCode).toBeGreaterThanOrEqual(400);
