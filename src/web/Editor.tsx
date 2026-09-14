@@ -5,6 +5,7 @@ import { t } from './i18n';
 import { Component, useCallback, useEffect, useRef, useState, useMemo, type ReactNode } from 'react';
 import { MarkdownEditor } from './MarkdownEditor';
 import { DocumentBackup } from './DocumentBackup';
+import { documentDelta } from './documentSync';
 import './markdown-source.css';
 import { EditorTools } from './EditorTools';
 import { EditorToolsController } from './editorCommands';
@@ -48,6 +49,8 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
     const host = useRef<HTMLDivElement>(null);
     const tools = useMemo(() => new EditorToolsController(id), [id]);
     const [recovery, setRecovery] = useState('');
+    const [syncNotice, setSyncNotice] = useState('');
+    const retrySync = useRef(() => {}), downloadCurrent = useRef(() => {});
     const [finding,setFinding]=useState(false),[findText,setFindText]=useState(''),[findCount,setFindCount]=useState('');
     const recoveryRef = useRef(recovery);
     recoveryRef.current = recovery;
@@ -65,30 +68,40 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
         const backup = new DocumentBackup(recoveryKey, doc => editor!.action(ctx => ctx.get(serializerCtx)(doc)), () => onStatusRef.current('无法生成恢复副本，请保留当前页面'));
         const keep = () => { if (editor) try { backup.schedule(editor.action(ctx => ctx.get(editorViewCtx).state.doc)); backup.flush(); } catch { onStatusRef.current('无法生成恢复副本，请保留当前页面'); } };
         const fallback = (error: any) => { if (disposed) return; blocked = true; keep(); onStatusRef.current('已切换 Markdown 源码'); onFailure(error.message || '富文本不可用'); };
+        const pause = (message: string) => {
+            if (disposed) return;
+            blocked = true;
+            keep();
+            setSyncNotice(message);
+            onStatusRef.current('同步暂停 · 当前输入已保留，请勿关闭页面');
+            editingChanged();
+        };
         const consume = (remote: any) => {
-            if (remote.schemaVersion !== documentSchemaVersion) { blocked = true; keep(); notify(t("编辑器协议已更新，请保存恢复副本并刷新页面"), true); return; }
+            if (remote.schemaVersion !== documentSchemaVersion) { pause(t("编辑器协议已更新，请保存恢复副本并刷新页面")); return; }
             if (!editor || disposed || editor.action(ctx => ctx.get(editorViewCtx).composing))
                 return;
             editor.action(ctx => {
                 const view = ctx.get(editorViewCtx);
                 const version = getVersion(view.state);
-                if (remote.version === version)
-                    return;
-                if (remote.steps.length !== remote.version - version) {
-                    keep();
-                    setRecovery(localStorage.getItem(recoveryKey) || '');
-                    fallback(new Error('文档富文本状态已重建，请对照源码与本机副本'));
+                const delta = documentDelta(version, remote);
+                if (delta.kind === 'stale') return;
+                if (delta.kind === 'gap') {
+                    pause(t('同步记录暂时无法衔接，当前正文保持不变。可以继续输入、重试同步或下载正文；请勿关闭页面。'));
                     return;
                 }
-                if (remote.clientIds.some((remoteId: string) => remoteId !== clientId)) splitGroup = true;
+                if (delta.clientIds.some(remoteId => remoteId !== clientId)) splitGroup = true;
                 const before = sendableSteps(view.state)?.steps.length || 0;
-                if (before && remote.clientIds.some((remoteId: string) => remoteId !== clientId)) keep();
-                view.dispatch(receiveTransaction(view.state, remote.steps.map((step: any) => Step.fromJSON(view.state.schema, step)), remote.clientIds));
-                const after = sendableSteps(view.state)?.steps.length || 0;
-                if (before > 0 && after < before && !remote.clientIds.includes(clientId)) {
-                    setRecovery(localStorage.getItem(recoveryKey) || '');
-                    notify(t("远端修改与未保存输入重叠，请检查恢复副本"), true);
+                if (before && delta.clientIds.some(remoteId => remoteId !== clientId)) keep();
+                const transaction = receiveTransaction(view.state, delta.steps.map((step: any) => Step.fromJSON(view.state.schema, step)), delta.clientIds);
+                const after = sendableSteps(view.state.apply(transaction))?.steps.length || 0;
+                const acknowledged = delta.clientIds.filter(remoteId => remoteId === clientId).length;
+                if (after < before - acknowledged) {
+                    pause(t('另一处修改与当前输入冲突，已暂停同步并保留当前正文，不会自动覆盖任一版本。请下载正文备份。'));
+                    return;
                 }
+                blocked = false;
+                setSyncNotice('');
+                view.dispatch(transaction);
             });
         };
         const pull = async () => { if (pulling || !editor || disposed || editor.action(ctx => ctx.get(editorViewCtx).composing))
@@ -97,8 +110,11 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
             consume(await api('/documents/' + id + '?since=' + version));
         }
         catch (error: any) {
-            if (error.code === 'DOCUMENT_RENDER_FAILED' || error.status >= 500 || error instanceof RangeError) fallback(error);
-            else onStatusRef.current(error.message || '连接中断');
+            pause(error.message || t('连接中断 · 输入已保留'));
+            if (!error.status || error.status >= 500) {
+                clearTimeout(retry);
+                retry = setTimeout(() => retrySync.current(), 1500);
+            }
         }
         finally {
             pulling = false;
@@ -109,6 +125,7 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
             const pending = editor.action(ctx => sendableSteps(ctx.get(editorViewCtx).state));
             if (!pending) {
                 if(!recoveryRef.current) backup.clear();
+                setSyncNotice('');
                 onStatusRef.current('已保存');
                 return;
             }
@@ -125,32 +142,25 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
                 const result = await api('/documents/' + id + '/steps', { requestId: batchRequestId, schemaVersion: documentSchemaVersion, version: pending.version, steps: pending.steps.map(step => step.toJSON()), clientId, groupId });
                 if (disposed) return;
                 consume(result.document);
-                if (!recoveryRef.current && !editor.action(ctx => sendableSteps(ctx.get(editorViewCtx).state)))
+                if (!blocked && !recoveryRef.current && !editor.action(ctx => sendableSteps(ctx.get(editorViewCtx).state)))
                     backup.clear();
             }
             catch (error: any) {
                 if (disposed) return;
                 keep();
-                if (error.code === 'DOCUMENT_RENDER_FAILED' || error.code === 'DOCUMENT_SCHEMA_CHANGED' || error.status >= 500 || error instanceof RangeError) { fallback(error); return; }
+                if (error.code === 'DOCUMENT_RENDER_FAILED' || error.code === 'DOCUMENT_SCHEMA_CHANGED' || error instanceof RangeError) { pause(error.message); return; }
                 if (error.status === 409) {
-                    const current = await api('/documents/' + id + '?since=' + pending.version);
-                    if (current.version === pending.version) {
-                        blocked = true;
-                        setRecovery(localStorage.getItem(recoveryKey) || '');
-                        onStatusRef.current('冲突 · 请保留输入后重新打开页面');
-                        return;
-                    }
-                    consume(current);
+                    await pull();
+                    if (!blocked && editor.action(ctx => getVersion(ctx.get(editorViewCtx).state)) === pending.version) pause(error.message);
                 }
                 else if (error.status >= 400 && error.status < 500) {
-                    blocked = true;
-                    setRecovery(localStorage.getItem(recoveryKey) || '');
-                    onStatusRef.current(error.message);
+                    pause(error.message);
                     return;
                 }
                 else {
-                    onStatusRef.current('连接中断 · 输入已保留');
-                    retry = setTimeout(() => void pump(), 1500);
+                    pause(t('连接暂时中断，当前正文保持不变，正在自动重试。可以继续输入，请勿关闭页面。'));
+                    clearTimeout(retry);
+                    retry = setTimeout(() => retrySync.current(), 1500);
                     return;
                 }
             }
@@ -160,6 +170,21 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
             }
             if (!disposed)
                 queueMicrotask(() => void pump());
+        };
+        retrySync.current = () => {
+            if (disposed) return;
+            clearTimeout(retry);
+            if (pulling || sending) { retry = setTimeout(() => retrySync.current(), 1500); return; }
+            blocked = false;
+            void pull().then(() => { if (!blocked) void pump(); });
+        };
+        downloadCurrent.current = () => {
+            if (!editor || disposed) return;
+            keep();
+            const body = editor.action(ctx => ctx.get(serializerCtx)(ctx.get(editorViewCtx).state.doc));
+            const url = URL.createObjectURL(new Blob([body], { type: 'text/markdown;charset=utf-8' }));
+            const anchor = document.createElement('a'); anchor.href = url; anchor.download = id + '.md'; anchor.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
         };
         const widgets = $prose(ctx => new Plugin({ props: { nodeViews: { workbench_embed: createEmbedNodeView(tools, text => ctx.get(parserCtx)(text), ctx.get(schemaCtx)) }, handleClick(view, pos, event) { const link = (event.target as HTMLElement).closest('a'); if (!link)
                     return false; const mark = view.state.doc.nodeAt(pos)?.marks.find(mark => mark.type.name === 'link') || view.state.doc.resolve(pos).marks().find(mark => mark.type.name === 'link'); const href = mark?.attrs.href || link.getAttribute('href') || ''; if (href.startsWith('doc:')) {
@@ -184,6 +209,12 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
                 if (disposed) {
                     await editor.destroy();
                     return;
+                }
+                if (saved) {
+                    try {
+                        const alreadySaved = editor.action(ctx => ctx.get(parserCtx)(saved).eq(ctx.get(editorViewCtx).state.doc));
+                        if (alreadySaved) { backup.clear(); recoveryRef.current = ''; setRecovery(''); }
+                    } catch { }
                 }
                 unsubscribe = subscribe(() => { editor?.action(ctx=>ctx.get(editorViewCtx).setProps({editable:()=>!locked()})); void pull(); });
                 onStatusRef.current('已保存');
@@ -219,10 +250,11 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
         };
         window.addEventListener('document-find',openFind);window.addEventListener('document-find-query',search);
         const unregister = registerBuffer('document:' + id,{
-            dirty:()=>!!recoveryRef.current || sending || !!editor?.action(ctx=>sendableSteps(ctx.get(editorViewCtx).state)),
+            dirty:()=>blocked || !!recoveryRef.current || sending || !!editor?.action(ctx=>sendableSteps(ctx.get(editorViewCtx).state)),
             flush:async()=>{
                 if (editor?.action(ctx => !!sendableSteps(ctx.get(editorViewCtx).state))) keep();
-                if(recoveryRef.current || blocked) throw Error(t("正文有待恢复内容，请先处理恢复副本"));
+                if (blocked) throw Error(t('正文同步暂停，请重试同步或下载正文后再离开'));
+                if(recoveryRef.current) throw Error(t("正文有待恢复内容，请先处理恢复副本"));
                 const deadline=Date.now()+10000;
                 while(sending || editor?.action(ctx=>!!sendableSteps(ctx.get(editorViewCtx).state))) {
                     if(Date.now()>deadline || blocked) throw Error(t("正文尚未保存，请等待连接恢复"));
@@ -234,7 +266,7 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
         const compositionEnd = () => { setTimeout(() => { void pull(); void pump(); }, 0); };
         const element = host.current;
         element?.addEventListener('compositionend', compositionEnd);
-        const beforeUnload = (event: BeforeUnloadEvent) => { if (editor?.action(ctx => !!sendableSteps(ctx.get(editorViewCtx).state))) {
+        const beforeUnload = (event: BeforeUnloadEvent) => { if (blocked || editor?.action(ctx => !!sendableSteps(ctx.get(editorViewCtx).state))) {
             keep();
             event.preventDefault();
         } };
@@ -248,5 +280,5 @@ function RichDocumentEditor({ id, onStatus, heading, onFailure }: {
             void editor.destroy();
         } backup.cancel(); window.removeEventListener('pagehide', preserve); document.removeEventListener('visibilitychange', visibility); };
     }, [id]);
-    return <div className="document-surface"><EditorTools controller={tools}/>{finding&&<div className="document-find"><input autoFocus aria-label={t("查找正文")} value={findText} onChange={event=>{setFindText(event.target.value);window.dispatchEvent(new CustomEvent('document-find-query',{detail:{text:event.target.value}}));}} onKeyDown={event=>{if(event.key==='Enter')window.dispatchEvent(new CustomEvent('document-find-query',{detail:{text:findText,backward:event.shiftKey}}));if(event.key==='Escape')setFinding(false);}}/><span>{findCount}</span><button onClick={()=>window.dispatchEvent(new CustomEvent('document-find-query',{detail:{text:findText}}))}>{t("下一处")}</button><button aria-label={t("关闭正文查找")} onClick={()=>setFinding(false)}>{t("关闭")}</button></div>}<div className="document-scroll">{heading}{recovery && <details className="recovery" open><summary>{t("本机保留了一份未确认输入，请对照后复制所需内容。")}</summary><textarea value={recovery} readOnly/><button onClick={() => { localStorage.removeItem('draft:' + getSnapshot()?.actor.userId + ':' + id); setRecovery(''); }}>{t("已检查，关闭副本")}</button></details>}<div className="document-editor" ref={host}/></div></div>;
+    return <div className="document-surface"><EditorTools controller={tools}/>{finding&&<div className="document-find"><input autoFocus aria-label={t("查找正文")} value={findText} onChange={event=>{setFindText(event.target.value);window.dispatchEvent(new CustomEvent('document-find-query',{detail:{text:event.target.value}}));}} onKeyDown={event=>{if(event.key==='Enter')window.dispatchEvent(new CustomEvent('document-find-query',{detail:{text:findText,backward:event.shiftKey}}));if(event.key==='Escape')setFinding(false);}}/><span>{findCount}</span><button onClick={()=>window.dispatchEvent(new CustomEvent('document-find-query',{detail:{text:findText}}))}>{t("下一处")}</button><button aria-label={t("关闭正文查找")} onClick={()=>setFinding(false)}>{t("关闭")}</button></div>}<div className="document-scroll">{heading}{syncNotice && <aside className="document-sync-notice" role="status"><p>{syncNotice}</p><button onClick={() => retrySync.current()}>{t("重试同步")}</button><button onClick={() => downloadCurrent.current()}>{t("下载当前正文")}</button></aside>}{recovery && <details className="recovery" open><summary>{t("本机保留了一份未确认输入，请对照后复制所需内容。")}</summary><textarea value={recovery} readOnly/><button onClick={() => { localStorage.removeItem('draft:' + getSnapshot()?.actor.userId + ':' + id); setRecovery(''); }}>{t("已检查，关闭副本")}</button></details>}<div className="document-editor" ref={host}/></div></div>;
 }

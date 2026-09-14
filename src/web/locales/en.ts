@@ -1,4 +1,10 @@
 export const english: Record<string, string> = {
+    "重试同步": "Retry sync",
+    "下载当前正文": "Download current text",
+    "同步记录暂时无法衔接，当前正文保持不变。可以继续输入、重试同步或下载正文；请勿关闭页面。": "Sync history is incomplete. Your current text is unchanged. You can keep typing, retry sync, or download your text. Keep this page open.",
+    "另一处修改与当前输入冲突，已暂停同步并保留当前正文，不会自动覆盖任一版本。请下载正文备份。": "Another edit conflicts with your input. Sync is paused and your current text is preserved. Neither version will be overwritten automatically. Download a backup of your text.",
+    "连接暂时中断，当前正文保持不变，正在自动重试。可以继续输入，请勿关闭页面。": "The connection was interrupted. Your text is unchanged and sync will retry automatically. You can keep typing; keep this page open.",
+    "正文同步暂停，请重试同步或下载正文后再离开": "Document sync is paused. Retry sync or download your text before leaving.",
     "已取消改期": "Rescheduling cancelled",
     "已撤销改期": "Date change undone",
     "排期已保存": "Schedule saved",
