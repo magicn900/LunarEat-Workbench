@@ -22,6 +22,14 @@ export function useReadingNavigation(snapshot: Snapshot | null, ready: boolean) 
             const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
             if (saved && Array.isArray(saved.entries) && saved.entries.length && Number.isInteger(saved.index) && saved.entries[saved.index] && typeof saved.session === 'string' && saved.entries.every((entry: Entry) => entry.route && typeof entry.route.selected === 'string' && typeof entry.route.selectedCollection === 'string' && ['workspace', 'collections', 'changes', 'schedule', 'inspiration'].includes(entry.route.tab) && entry.position && typeof entry.position === 'object')) journal = saved;
         } catch {}
+        const url = new URL(location.href);
+        const linked = snapshot?.tree[url.searchParams.get('document') || ''];
+        if (linked && url.searchParams.get('project') === snapshot?.project.id) {
+            const route = { selected: linked.id, selectedCollection: linked.kind === 'collection' ? linked.id : linked.kind === 'view' ? linked.collection : '', tab: linked.kind === 'collection' || linked.kind === 'view' ? 'collections' : 'workspace' };
+            journal = { entries: [{ route, position: {} }], index: 0, session: randomUUID(), positions: {} };
+            url.searchParams.delete('document'); url.searchParams.delete('project');
+            window.history.replaceState(window.history.state, '', url);
+        }
         journal.positions = journal.positions && typeof journal.positions === 'object' ? journal.positions : {};
         const marker = () => window.history.state?.workbenchReading;
         const existing = marker();

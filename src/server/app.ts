@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import { registerAssetRoutes } from './assetRoutes.js';
+import { registerPdfRoutes } from './pdfRoutes.js';
 import cookie from '@fastify/cookie';
 import websocket from '@fastify/websocket';
 import staticFiles from '@fastify/static';
@@ -83,6 +84,7 @@ export async function createApp(service: Service, webRoot = 'dist') {
     registerLifecycle(app, store);
     registerSchedule(app, store, actor);
     registerAssetRoutes(app, service);
+    registerPdfRoutes(app, service);
     registerAccountSettings(app, store);
     app.get('/api/search', async (request) => service.search(actor(request), z.object({ q: z.string().default('') }).parse(request.query).q));
     app.post('/api/workspace/import-preview', async (request) => { const current = actor(request); requireScope(current, 'workspace.read'); const entity = entitySchema.parse(request.body); const before = serialize(entity); if (entity.kind === 'object')

@@ -27,6 +27,12 @@ Read-Host -MaskInput 需要 PowerShell 7.1 或更高版本。其他终端请通�
 
 ## 配置
 
+### PDF 运行依赖
+
+PDF 由服务端的 Chromium 生成。安装或升级依赖后，在运行服务的同一账号下执行 `pnpm exec playwright install chromium`；Linux 主机首次安装使用 `pnpm exec playwright install --with-deps chromium`，并安装中文字体（例如 Debian/Ubuntu 的 `fonts-noto-cjk`）。Docker 镜像已包含浏览器及中文字体。缺少浏览器不会影响 Markdown 导出或普通编辑，但 PDF 会提示运行依赖不可用。
+
+浏览器进程禁用页面脚本、服务工作线程和网络请求，只读取已鉴权的内联文档、图片及公式字体。单个应用最多同时执行两项 PDF 预检或生成，超时为 60 秒；取消会关闭浏览器并释放名额。生成不保存永久 PDF 或公开下载地址。生产环境仍建议用独立低权限账号或容器运行，并限制进程内存。
+
 | 环境变量 | 用途 |
 | --- | --- |
 | HOST | 监听地址，默认 127.0.0.1 |
@@ -34,6 +40,7 @@ Read-Host -MaskInput 需要 PowerShell 7.1 或更高版本。其他终端请通�
 | WORKBENCH_DATA | 数据保存目录 |
 | WORKBENCH_ORIGIN | 对外访问的可信 Origin，例如 https://workbench.example.com |
 | COOKIE_SECURE | HTTPS 部署时设为 true |
+| PLAYWRIGHT_BROWSERS_PATH | 可选的 Chromium 安装目录，安装与启动时须一致 |
 
 .env.example 是配置参考。直接运行服务不会自动加载该文件，需要通过终端、服务管理器或容器环境传入配置。修改开发 API 端口时也要调整开发代理。
 

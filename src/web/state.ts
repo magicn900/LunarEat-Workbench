@@ -29,7 +29,7 @@ export type Snapshot = {
     };
 };
 let snapshot: Snapshot | null = null;
-let pageProject = typeof sessionStorage === 'undefined' ? '' : sessionStorage.getItem('workbench-project') || localStorage.getItem('workbench-project') || '';
+let pageProject = typeof sessionStorage === 'undefined' ? '' : (typeof location === 'undefined' ? '' : new URL(location.href).searchParams.get('project')) || sessionStorage.getItem('workbench-project') || localStorage.getItem('workbench-project') || '';
 export const currentProject = () => pageProject;
 export function selectProject(id: string) {
     if (pageProject !== id) { pageProject = id; clearSnapshot(); }

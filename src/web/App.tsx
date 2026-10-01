@@ -1,7 +1,7 @@
 import { randomUUID } from './uuid';
 import { Schedule } from './Schedule';
 import { useReadingNavigation } from './useReadingNavigation';
-import { exportDocument } from './exportDocument';
+import { ExportMenu } from './ExportDialog';
 import { WorkspaceIdentity } from './WorkspaceIdentity';
 import { t } from './i18n';
 import { useEffect, useState, lazy, Suspense } from 'react';
@@ -11,7 +11,7 @@ import { MergeWorkspace } from './MergeWorkspace';
 import { Changes } from './Changes';
 
 import './interactions.css';
-import { BookOpen, ArrowLeft, ArrowRight, ChevronRight, FileText, ArrowUpRight, Check, Menu, PanelRight, Upload, Download, Sparkles, Link2, X, Search, Plus } from 'lucide-react';
+import { BookOpen, ArrowLeft, ArrowRight, ChevronRight, FileText, ArrowUpRight, Check, Menu, PanelRight, Upload, Sparkles, Link2, X, Search, Plus } from 'lucide-react';
 import { api, apply, getSnapshot, navigate, notify, put, reload, useSnapshot } from './state';
 import { Cell } from './CollectionView';
 import { EntityMenuButton, CommandSurface } from './CommandSurface';
@@ -110,7 +110,7 @@ export function App() {
   <WriteControl/>{!!snapshot.project.archived && <p className="project-archive-notice" role="status">{t("项目已归档，当前仅可查看。请联系管理员恢复项目后继续编辑。")}</p>}{inWorkspace && <div className={"revision-bar" + (snapshot.main !== snapshot.workspace.base ? " revision-behind" : "")}><BookOpen size={13}/><span title={t("草稿起点版本：") + snapshot.workspace.base}>{t("我的草稿 · 基于正式版本")}</span>{snapshot.main !== snapshot.workspace.base ? <><span role="status">⚠ {t("个人草稿落后于正式版本")}</span><button className="revision-merge-button" disabled={locked() || !snapshot.actor.scopes.includes("workspace.write")} onClick={() => void flushEditing().then(() => setMerging(true)).catch(error => notify(error.message, true))}>{t("合入最新正式设计")}</button></> : <span>{t("已包含团队最新设计")}</span>}<div className="spacer"/><span className={status === '已保存' ? 'saved' : 'pending'}>{status === '已保存' && <Check size={13}/>} {t(status)}</span><button className="icon" title={t("属性与活动")} aria-pressed={right} onClick={() => setRight(!right)}><PanelRight size={15}/></button></div>}
   <div className="workspace-body"><section className={'content' + (tab === 'workspace' && object ? ' content-document' : '')}>
    {tab === 'workspace' && (object ? <Suspense fallback={<div className="empty">{t("正在加载编辑器…")}</div>}><DocumentEditor key={object.id} id={object.id} onStatus={setStatus} heading={<div className="page-heading"><span className="eyebrow">{object.collection ? t("集合记录") : t("设计文档")} / {object.path.split('/').slice(0, -1).join('/')}</span><TitleInput key={object.id} object={object}/><div className="page-meta"><span>Markdown</span><span>{t("人和 Agent 共同编辑")}</span><button disabled={locked()} onClick={() => { const path = prompt(t("目标路径（含文件名）"), object.path); if (path)
-        void put({ ...object, path }, object).catch(error => notify(error.message, true)); }}>{t("移动 / 重命名")}</button><button onClick={() => void exportDocument(object.id).catch(error => notify(error.message, true))}><Download size={12}/>{t("导出")}</button><label className="import-button"><Upload size={12}/>{t("导入")}<input disabled={locked()} type="file" accept=".md,.json" aria-label={t("导入页面文件")} className="import-file-input" onChange={event => { const file = event.target.files?.[0]; if (file)
+        void put({ ...object, path }, object).catch(error => notify(error.message, true)); }}>{t("移动 / 重命名")}</button><ExportMenu id={object.id}/><label className="import-button"><Upload size={12}/>{t("导入")}<input disabled={locked()} type="file" accept=".md,.json" aria-label={t("导入页面文件")} className="import-file-input" onChange={event => { const file = event.target.files?.[0]; if (file)
         void importFile(file).catch(error => notify(error.message, true)); event.target.value = ''; }}/></label></div></div>}/></Suspense> : <div className="empty spacious"><BookOpen size={36}/><h2>{t("从一页设计开始")}</h2><p>{t("选择左侧文档，或创建一份新的草稿。")}</p><button className="primary" onClick={() => void createDocument()}>{t("新建页面")}</button></div>)}
 
    {tab === 'schedule' && (snapshot.actor.scopes.includes('schedule.read') ? <Schedule key={snapshot.project.id + ':' + snapshot.actor.userId}/> : <div className="page-panel">{t('没有任务排期查看权限，请联系管理员。')}</div>)}

@@ -1,0 +1,58 @@
+.export-menu{position:relative;display:inline-flex;align-items:center;gap:3px}
+.export-format-menu{position:absolute;top:calc(100% + 8px);left:0;min-width:165px;padding:5px;background:var(--paper);border:1px solid var(--border);border-radius:6px;box-shadow:0 8px 24px #19241420;z-index:var(--layer-menu);display:flex;flex-direction:column;gap:2px}
+.page-meta .export-format-menu button{display:flex;width:100%;justify-content:flex-start;padding:9px 10px;font-size:12px;border-radius:4px;color:inherit}
+.page-meta .export-format-menu button:hover{background:var(--green-light)}
+.modal.pdf-export-dialog{width:1080px;padding:24px;overflow:auto}
+.pdf-export-dialog>header{margin-bottom:12px}
+.pdf-export-context{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-bottom:16px}
+.pdf-export-context>span:first-of-type{color:inherit;font-weight:600}
+.pdf-export-context>span:last-child{margin-left:auto}
+.pdf-export-body{display:grid;grid-template-columns:minmax(240px,285px) minmax(0,1fr);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.pdf-export-settings{padding:18px;min-width:0}
+.pdf-export-settings>label,.pdf-export-settings details label{display:flex;flex-direction:column;gap:6px;font-size:12px;margin-bottom:15px}
+.pdf-export-settings select,.pdf-export-settings input:not([type=checkbox]){width:100%;font-size:12px;padding:8px 9px}
+.pdf-filename{display:flex;align-items:center;gap:7px}
+.pdf-filename>span{color:var(--muted)}
+.pdf-setting-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:15px}
+.pdf-setting-pair label{font-size:12px;display:flex;flex-direction:column;gap:6px}
+.pdf-setting-pair label+label{margin-top:0}
+.pdf-export-dialog .pdf-check{display:flex;flex-direction:row;align-items:center;gap:8px;margin:10px 0;font-size:12px}
+.pdf-check input{margin:0;accent-color:var(--accent);width:15px;height:15px}
+.pdf-export-settings details{border-top:1px solid var(--border);margin-top:16px;padding-top:12px}
+.pdf-export-settings summary{font-size:12px;color:var(--muted);cursor:pointer;margin-bottom:12px}
+.pdf-export-settings p,.pdf-export-settings small{font-size:11px;color:var(--muted);line-height:1.7;margin:5px 0;overflow-wrap:anywhere}
+.pdf-embedded-content label{border-bottom:1px solid var(--border);padding-bottom:12px}
+.pdf-embedded-content strong{font-size:12px;font-weight:600}
+.pdf-embedded-content label>span{font-size:11px;color:var(--muted)}
+.pdf-export-preview{min-width:0;background:var(--green-light);padding:14px;border-left:1px solid var(--border);display:flex;flex-direction:column}
+.pdf-export-preview header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-bottom:12px}
+.pdf-export-preview header>span:nth-child(2){margin-left:auto}
+.pdf-export-preview header a{display:inline-flex;align-items:center;gap:4px;font-size:11px}
+.pdf-reader{width:100%;min-width:0}
+.pdf-reader-tools{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.pdf-reader-tools button{padding:5px 7px;background:var(--paper)}
+.pdf-reader-tools span{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:50px;text-align:center}
+.pdf-reader-tools select{font-size:11px;padding:5px 8px;margin-left:auto;max-width:120px}
+.pdf-reader-viewport{position:relative;height:540px;width:100%;overflow:auto;min-width:0;background:var(--paper);padding:12px;border:1px solid var(--border);border-radius:4px}
+.pdf-reader-viewport canvas{display:block;margin:auto;background:#fff;box-shadow:0 3px 12px #19241420}
+.pdf-reader-viewport canvas[hidden]{display:none}
+.pdf-reader-loading{display:flex;align-items:center;justify-content:center;gap:8px;padding:16px;position:absolute;inset:0;background:var(--paper);font-size:12px;color:var(--muted);z-index:1}
+.pdf-reader-viewport>p{font-size:12px;color:var(--muted);padding:18px;text-align:center}
+.pdf-export-preview>p{font-size:11px;color:var(--muted);margin:10px 0 0;line-height:1.7}
+.pdf-preview-placeholder{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;min-height:565px;padding:24px;text-align:center;color:var(--muted);background:var(--paper);border:1px solid var(--border);border-radius:4px}
+.pdf-preview-placeholder strong{font-size:13px;font-weight:500}
+.pdf-preview-placeholder span{font-size:11px}
+.pdf-export-snapshot{margin-top:12px;font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+.pdf-export-warning,.pdf-export-error{padding:12px 14px;margin-top:14px;border:1px solid var(--border);border-radius:6px;font-size:12px;line-height:1.7;background:var(--paper)}
+.pdf-export-warning strong{color:var(--text-92702b)}
+.pdf-export-warning ul{margin:6px 0;padding-left:18px}
+.pdf-export-error p{color:var(--text-ad483c);margin:0 0 10px}
+.pdf-export-error button{font-size:12px;margin-right:8px}
+.pdf-export-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:18px;padding-top:16px;border-top:1px solid var(--border);position:sticky;bottom:-24px;background:var(--paper);padding-bottom:10px;z-index:1}
+.pdf-export-footer>span{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.pdf-export-footer>div{display:flex;gap:8px;margin-left:auto}
+.pdf-export-footer button{font-size:12px}
+.pdf-spinner{animation:pdf-spin 1s linear infinite}
+@keyframes pdf-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.pdf-spinner{animation:none}}
+@media(max-width:760px){.pdf-export-body{grid-template-columns:1fr}.modal.pdf-export-dialog{padding:18px}.pdf-export-preview{border-left:0;border-top:1px solid var(--border)}.pdf-reader-viewport{height:450px}.pdf-preview-placeholder{min-height:300px}.pdf-export-footer{bottom:-18px}}
