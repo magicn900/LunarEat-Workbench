@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, it, expect } from 'vitest';
+import { beforeAll, afterAll, it, expect, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, basename, join, resolve } from 'node:path';
@@ -11,6 +11,7 @@ import { createApp } from '../src/server/app';
 import { seed } from '../src/server/seed';
 import { actorFor } from '../src/server/auth';
 import { renderPdf } from '../src/server/pdfRenderer';
+import * as pdfRenderer from '../src/server/pdfRenderer';
 import { pdfOptionsSchema } from '../src/shared/pdfExport';
 
 let directory: string, store: Store, codec: Codec, service: Service, app: Awaited<ReturnType<typeof createApp>>, cookie: string, otherCookie: string;
@@ -72,4 +73,45 @@ it('中止生成会关闭浏览器，不阻塞后续生成', async () => {
     await expect(pending).rejects.toThrow();
     const bytes = await renderPdf('<html><body>Recovered PDF</body></html>', pdfOptionsSchema.parse({}), 'draft', AbortSignal.timeout(15000));
     expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
+});
+it('原图通过任务资源传递，重复地址复用字节，不放大 HTML 或跨任务复用资源', async () => {
+    const bytes = await sharp({ create: { width: 1200, height: 800, channels: 4, background: '#376548' } }).png().toBuffer();
+    const upload = await app.inject({ method: 'POST', url: '/api/projects/demo/documents/overview/images', headers: { ...headers(), 'content-type': 'application/octet-stream' }, payload: bytes });
+    expect(upload.statusCode).toBe(200);
+    const source = upload.json().url;
+    const document = store.entity(head(), 'overview');
+    if (document?.kind !== 'object') throw Error('fixture');
+    service.execute(actor(), {}, () => service.mutate(actor(), randomUUID(), [{ type: 'put', expected: document, entity: { ...document, body: `![原图](${source})\n\n![绝对地址](http://localhost${source})\n\n![重复](${source}?copy=1)` } }]));
+    const render = vi.spyOn(pdfRenderer, 'renderPdf').mockResolvedValue(Buffer.from('%PDF-test'));
+    try {
+        const inspection = await app.inject({ method: 'POST', url: endpoint + '/inspect', headers: { ...headers(), host: 'localhost' }, payload: { head: head() } });
+        expect(inspection.statusCode).toBe(200);
+        expect(inspection.json().warnings).toEqual([]);
+        expect(render).not.toHaveBeenCalled();
+        for (let attempt = 0; attempt < 2; attempt++) expect((await app.inject({ method: 'POST', url: endpoint, headers: { ...headers(), host: 'localhost' }, payload: { head: head() } })).statusCode).toBe(200);
+        const call = render.mock.calls[0] as unknown[];
+        const html = call[0] as string, resources = call[4] as ReadonlyMap<string, { mime: string; bytes: Buffer }>;
+        expect(html.includes(';base64,')).toBe(false);
+        expect(Buffer.byteLength(html)).toBeLessThan(10000);
+        expect(resources).toBeInstanceOf(Map);
+        expect(resources.size).toBe(1);
+        const sources = [...html.matchAll(/<img src="([^"]+)"/g)].map(match => match[1]);
+        expect(sources).toHaveLength(3);
+        expect(new Set(sources).size).toBe(1);
+        const resource = resources.get(sources[0])!;
+        expect(resource.mime).toBe('image/png');
+        expect(resource.bytes.equals(bytes)).toBe(true);
+        expect((await sharp(resource.bytes).metadata())).toMatchObject({ width: 1200, height: 800 });
+        const nextResources = (render.mock.calls[1] as unknown[])[4] as ReadonlyMap<string, { bytes: Buffer }>;
+        expect(nextResources.has(sources[0])).toBe(false);
+        expect([...nextResources.values()][0].bytes.equals(bytes)).toBe(true);
+        const current = store.entity(head(), 'overview');
+        if (current?.kind !== 'object') throw Error('fixture');
+        service.execute(actor(), {}, () => service.mutate(actor(), randomUUID(), [{ type: 'put', expected: current, entity: { ...current, body: current.body + `\n\n![伪装外网](https://external.invalid${source})\n\n![其他项目](${source.replace('/demo/', '/other-project/')})` } }]));
+        const denied = await app.inject({ method: 'POST', url: endpoint + '/inspect', headers: { ...headers(), host: 'localhost' }, payload: { head: head() } });
+        expect(denied.statusCode).toBe(200);
+        expect(denied.json().warnings).toHaveLength(2);
+        expect((await app.inject({ method: 'POST', url: endpoint, headers: { ...headers(), host: 'localhost' }, payload: { head: head() } })).statusCode).toBe(422);
+        expect(render).toHaveBeenCalledTimes(2);
+    } finally { render.mockRestore(); }
 });

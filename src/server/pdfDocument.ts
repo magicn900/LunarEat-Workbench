@@ -10,6 +10,7 @@ import { pdfExportLimits, type PdfInspection, type PdfOptions, type PdfViewSumma
 import { mathPreviewLimits } from '../shared/mathLimits.js';
 import type { CollectionView, Field, Tree } from '../shared/model.js';
 import { Fault } from './auth.js';
+import { pdfImageOrigin } from './pdfResources.js';
 
 type MarkdownNode = { type: string; value?: string; children?: MarkdownNode[]; depth?: number; url?: string; alt?: string; identifier?: string; checked?: boolean | null; ordered?: boolean; start?: number; align?: (string | null)[] };
 export type PdfContext = { head: string; at: string; timeZone: string; project: { id: string; name: string }; origin: string; source: string; signal?: AbortSignal; inspectionOnly?: boolean };
@@ -179,7 +180,7 @@ export async function preparePdfDocument(tree: Tree, id: string, context: PdfCon
         return `<div><dt>${escapeHtml(field?.label || key)}</dt><dd>${format(value, field)}</dd></div>`;
     }).join('') : '';
     const toc = options.toc && headings.length ? `<nav class="contents"><h2>${translated('目录', 'Contents')}</h2><ul>${headings.map(heading => `<li class="level-${heading.level}"><a href="#${heading.id}">${escapeHtml(heading.title)}</a></li>`).join('')}</ul></nav>` : '';
-    const html = `<!doctype html><html lang="${options.language}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:"><title>${escapeHtml(entity.title)}</title><style>${pdfPrintStyles(options)}</style></head><body><main><header class="document-title"><div class="project">${escapeHtml(context.project.name)}</div><h1>${escapeHtml(entity.title)}</h1><div class="snapshot">${escapeHtml(context.source)} · ${escapeHtml(date)} (${escapeHtml(context.timeZone)}) · ${escapeHtml(context.head.slice(0, 12))}</div></header>${properties ? '<dl class="properties">' + properties + '</dl>' : ''}${toc}${body}</main></body></html>`;
+    const html = `<!doctype html><html lang="${options.language}"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: ${pdfImageOrigin}; font-src data:"><title>${escapeHtml(entity.title)}</title><style>${pdfPrintStyles(options)}</style></head><body><main><header class="document-title"><div class="project">${escapeHtml(context.project.name)}</div><h1>${escapeHtml(entity.title)}</h1><div class="snapshot">${escapeHtml(context.source)} · ${escapeHtml(date)} (${escapeHtml(context.timeZone)}) · ${escapeHtml(context.head.slice(0, 12))}</div></header>${properties ? '<dl class="properties">' + properties + '</dl>' : ''}${toc}${body}</main></body></html>`;
     if (Buffer.byteLength(html) > pdfExportLimits.htmlBytes + Math.ceil(pdfExportLimits.imageBytes * 4 / 3)) throw new Fault(413, '导出内容过大，请缩小文档或嵌入范围');
     return { html, inspection };
 }

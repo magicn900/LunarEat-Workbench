@@ -24,6 +24,7 @@ export type PdfRequest = z.infer<typeof pdfRequestSchema>;
 export type PdfViewSummary = { key: string; id: string; title: string; layout: 'table' | 'list' | 'cards'; rows: number; columns: number; conditions: string; mode: z.infer<typeof pdfViewModeSchema>; available: boolean };
 export type PdfWarning = { kind: 'image' | 'embed' | 'field' | 'math'; message: string };
 export type PdfInspection = { title: string; head: string; at: string; source: string; views: PdfViewSummary[]; warnings: PdfWarning[] };
+export type PdfTaskStatus = { taskId: string; state: 'queued' | 'rendering' | 'ready' | 'failed' | 'cancelled'; position?: number; bytes?: number; etag?: string; inspection?: PdfInspection; expiresAt?: number; error?: string; errorStatus?: number };
 export const pdfExportLimits = { views: 100, rowsPerView: 2000, totalRows: 5000, imageBytes: 50 * 1024 * 1024, htmlBytes: 4 * 1024 * 1024, timeoutMs: 60000, pdfBytes: 30 * 1024 * 1024 } as const;
 export function pdfFilename(title: string) { return (title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[.\s]+$/g, '').slice(0, 120) || 'document') + '.pdf'; }
 export function pdfSnapshotDate(at: string, timeZone: string) { return new Intl.DateTimeFormat('sv-SE', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(at)); }

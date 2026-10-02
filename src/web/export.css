@@ -52,6 +52,10 @@
 .pdf-export-footer>span{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
 .pdf-export-footer>div{display:flex;gap:8px;margin-left:auto}
 .pdf-export-footer button{font-size:12px}
+.pdf-export-metrics{display:flex;gap:8px 14px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:8px;font-variant-numeric:tabular-nums}
+.pdf-export-reused{color:var(--accent)}
+.pdf-export-footer>span{flex-wrap:wrap;max-width:100%;overflow-wrap:anywhere}
+.pdf-export-footer progress{height:4px;width:100%;accent-color:var(--accent);border:0}
 .pdf-spinner{animation:pdf-spin 1s linear infinite}
 @keyframes pdf-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.pdf-spinner{animation:none}}
